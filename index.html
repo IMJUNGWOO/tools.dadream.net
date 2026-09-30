@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>업무 도구 모음</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --card-bg: #ffffff;
+    --text: #1a1d23;
+    --sub: #6b7280;
+    --border: #e5e7eb;
+    --accent: #2563eb;
+    --accent-bg: #eff4ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181d;
+      --card-bg: #1f232b;
+      --text: #eef0f3;
+      --sub: #9aa1ac;
+      --border: #2c313a;
+      --accent: #60a5fa;
+      --accent-bg: #1c2637;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    padding: 32px 16px 60px;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  header { margin-bottom: 28px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  header p { margin: 0; color: var(--sub); font-size: 14px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 14px;
+  }
+  a.card {
+    display: block;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+    text-decoration: none;
+    color: var(--text);
+    transition: border-color .15s, transform .15s;
+  }
+  a.card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .icon {
+    width: 36px; height: 36px;
+    border-radius: 9px;
+    background: var(--accent-bg);
+    color: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; margin-bottom: 12px;
+  }
+  .card h2 { font-size: 16px; margin: 0 0 4px; }
+  .card p { font-size: 13px; color: var(--sub); margin: 0; line-height: 1.5; }
+  .badge {
+    display: inline-block; margin-top: 10px;
+    font-size: 11px; color: var(--accent);
+    background: var(--accent-bg); padding: 2px 8px; border-radius: 999px;
+  }
+  footer { margin-top: 40px; font-size: 12px; color: var(--sub); text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>업무 도구 모음</h1>
+    <p>사용할 도구를 선택하세요.</p>
+  </header>
+  <div class="grid" id="grid"></div>
+  <footer>새 도구를 추가하려면 이 파일 안의 TOOLS 목록에 한 줄 추가하고, 같은 파일명으로 저장소에 함께 업로드하면 됩니다.</footer>
+</div>
+
+<script>
+  // ▼▼▼ 도구를 추가/수정하려면 이 목록만 고치면 됩니다 ▼▼▼
+  // file: 실제 업로드할 html 파일명과 정확히 같아야 함 (같은 폴더에 함께 업로드)
+  const TOOLS = [
+    {
+      name: "수수료 자동 매칭",
+      file: "약정금액_자동계산.html",
+      desc: "통신사별 수수료표로 약정금액을 자동 계산",
+      icon: "💰"
+    },
+    {
+      name: "IBK 사은품 이체",
+      file: "IBK_이체.html",
+      desc: "고객 사은품 이체용 IBK 일괄이체 파일 생성",
+      icon: "🏦"
+    },
+    {
+      name: "협력점 정산서 생성",
+      file: "정산서_자동화.html",
+      desc: "우리웹 고객목록을 협력점별로 분리·정산서 생성",
+      icon: "📄"
+    }
+    // 필요하면 여기에 { name, file, desc, icon } 형태로 계속 추가
+  ];
+  // ▲▲▲ 여기까지만 수정 ▲▲▲
+
+  const grid = document.getElementById('grid');
+  TOOLS.forEach(t => {
+    const a = document.createElement('a');
+    a.className = 'card';
+    a.href = t.file;
+    a.innerHTML = `
+      <div class="icon">${t.icon || '🔧'}</div>
+      <h2>${t.name}</h2>
+      <p>${t.desc || ''}</p>
+      <span class="badge">${t.file}</span>
+    `;
+    grid.appendChild(a);
+  });
+</script>
+</body>
+</html>

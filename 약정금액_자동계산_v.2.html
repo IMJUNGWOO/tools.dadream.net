@@ -1,0 +1,2380 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>약정금액(O열) 자동계산</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<style>
+  :root{
+    --bg:#f7f7f5; --panel:#ffffff; --ink:#1c1c1a; --sub:#6b6b66;
+    --line:#e4e3de; --accent:#2f6f4f; --accent-ink:#ffffff;
+    --warn:#b3541e; --warn-bg:#fdf1e7; --ok-bg:#eef5ef;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Pretendard,"Malgun Gothic",sans-serif; background:var(--bg); color:var(--ink); line-height:1.5;}
+  .wrap{max-width:1180px; margin:0 auto; padding:28px 20px 80px;}
+  h1{font-size:22px; margin:0 0 4px;}
+  .sub{color:var(--sub); font-size:14px; margin-bottom:24px;}
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:20px; margin-bottom:18px;}
+  .panel h2{font-size:15px; margin:0 0 14px; display:flex; align-items:center; gap:8px;}
+  .step-num{display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:var(--ink); color:#fff; font-size:12px; font-weight:600;}
+  .row{display:flex; gap:14px; flex-wrap:wrap;}
+  .field{flex:1; min-width:240px;}
+  .field label{display:block; font-size:13px; color:var(--sub); margin-bottom:6px;}
+  input[type=file]{width:100%; font-size:13px; padding:8px; border:1px dashed var(--line); border-radius:8px; background:#fafaf8;}
+  input[type=date]{width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:13px;}
+  .filestatus{font-size:12px; margin-top:6px; color:var(--sub);}
+  .filestatus.ok{color:var(--accent);}
+  button{cursor:pointer; border:none; border-radius:8px; font-size:14px; font-weight:600; padding:11px 20px; transition:opacity .15s;}
+  button:disabled{opacity:.4; cursor:not-allowed;}
+  button:hover:not(:disabled){opacity:.88;}
+  .btn-primary{background:var(--ink); color:#fff;}
+  .btn-accent{background:var(--accent); color:#fff;}
+  .btn-ghost{background:transparent; color:var(--ink); border:1px solid var(--line);}
+  .actions{display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; align-items:center;}
+  .stats{display:flex; gap:10px; flex-wrap:wrap; margin:16px 0;}
+  .stat{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 16px; min-width:110px;}
+  .stat .n{font-size:20px; font-weight:700;}
+  .stat .l{font-size:12px; color:var(--sub);}
+  .stat.warn .n{color:var(--warn);}
+  .stat.ok .n{color:var(--accent);}
+  .toolbar{display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px;}
+  .toolbar .left{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+  select, .search{padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:13px;}
+  .search{min-width:180px;}
+  table{width:100%; border-collapse:collapse; font-size:13px; background:var(--panel);}
+  thead th{position:sticky; top:0; background:#f0efe9; text-align:left; padding:9px 10px; border-bottom:2px solid var(--line); white-space:nowrap; font-size:12px; color:var(--sub);}
+  tbody td{padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top;}
+  tbody tr.warn{background:var(--warn-bg);}
+  tbody tr.prefilled{background:#eef2fb;}
+  tbody tr:hover{background:#f5f5f0;}
+  .tag{display:inline-block; font-size:11px; padding:2px 7px; border-radius:20px; font-weight:600;}
+  .tag.ok{background:var(--ok-bg); color:var(--accent);}
+  .tag.warn{background:#fbe4d2; color:var(--warn);}
+  .tag.prefilled{background:#dce4f7; color:#33488a;}
+  .tag.equal{background:#dbe8fb; color:#1d4ed8;}
+  tr.equalrow{color:#1d4ed8;}
+  .val-input{width:110px; padding:5px 7px; border:1px solid var(--line); border-radius:6px; font-family:var(--mono); font-size:12.5px; text-align:right;}
+  .val-input.edited{border-color:var(--accent); background:#f3f9f4;}
+  .note{font-size:11.5px; color:var(--sub); max-width:340px; display:block; font-family:var(--mono);}
+  .tablewrap{max-height:640px; overflow:auto; border:1px solid var(--line); border-radius:10px;}
+  .empty{padding:60px 20px; text-align:center; color:var(--sub); font-size:14px;}
+  .hint{font-size:12px; color:var(--sub); margin-top:4px;}
+  .badge-carrier{font-family:var(--mono); font-size:11px; color:var(--sub);}
+  .footer-note{font-size:12px; color:var(--sub); margin-top:20px; line-height:1.7;}
+  .footer-note b{color:var(--ink);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>약정금액(O열) 자동계산</h1>
+  <div class="sub">수수료표 + 고객 리스트를 올리면, 접수일 기준 수수료표를 찾아 O열(약정금액)을 자동으로 채워줍니다.</div>
+
+  <div class="panel">
+    <h2><span class="step-num">1</span> 파일 업로드</h2>
+    <div class="row">
+      <div class="field">
+        <label>수수료 파일 (여러 달치 동시 업로드 가능 — 예: 통합_2607.xlsx + 통합_2608.xlsx)</label>
+        <input type="file" id="feeFile" accept=".xlsx,.xls" multiple>
+        <div class="filestatus" id="feeStatus">아직 업로드 안됨</div>
+      </div>
+      <div class="field">
+        <label>고객 리스트 (전체정산관리_XXXX.xls)</label>
+        <input type="file" id="custFile" accept=".xlsx,.xls">
+        <div class="filestatus" id="custStatus">아직 업로드 안됨</div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn-primary" id="calcBtn" disabled>계산하기</button>
+    </div>
+    <div class="hint">고객 리스트의 "상태=개통완료"인 전체 건을 계산합니다.</div>
+  </div>
+
+  <div class="panel" id="resultPanel" style="display:none;">
+    <h2><span class="step-num">2</span> 결과 확인 &amp; 수정</h2>
+    <div class="stats" id="statsRow"></div>
+
+    <div class="toolbar">
+      <div class="left">
+        <select id="filterMode">
+          <option value="all">전체 보기</option>
+          <option value="warn">확인필요만 보기</option>
+          <option value="prefilled">기존값유지만 보기</option>
+          <option value="edited">수정한 항목만 보기</option>
+        </select>
+        <input class="search" id="searchBox" placeholder="고객명/상품명 검색">
+      </div>
+      <div class="actions" style="margin:0;">
+        <button class="btn-accent" id="downloadBtn">엑셀 다운로드</button>
+      </div>
+    </div>
+
+    <div class="tablewrap">
+      <table id="resultTable">
+        <thead>
+          <tr>
+            <th>고객명</th>
+            <th>협력점</th>
+            <th>상품명</th>
+            <th>상품옵션</th>
+            <th>셋트</th>
+            <th>접수일</th>
+            <th>상태</th>
+            <th>계산된 O열(약정금액)</th>
+            <th>비고</th>
+          </tr>
+        </thead>
+        <tbody id="resultBody"></tbody>
+      </table>
+    </div>
+    <div class="footer-note">
+      <b>확인이 필요한 항목(주황색)</b>은 수수료표에서 정확히 매칭되지 않은 경우입니다 — 값을 직접 수정한 뒤 다운로드하세요.<br>
+      <b>기존값유지(파란색)</b>는 고객 리스트에 약정금액이 이미 입력되어 있던 행입니다 — 자동으로 덮어쓰지 않고 기존 값을 그대로 유지하며, 비고란에 참고용 자동계산값을 함께 보여줍니다.<br>
+      LG소호/USIM/렌탈 등 수수료표에 없는 상품은 0으로 유지되며 수동 확인이 필요합니다.
+    </div>
+  </div>
+
+  <div class="panel" id="supPanel">
+    <h2><span class="step-num">3</span> 상부수수료 매칭 (선택)</h2>
+    <div class="sub" style="margin-bottom:14px;">약정금액이 채워진 결과 파일과, 상부에서 받은 정산서를 업로드하면 고객별로 매칭해서 상부수수료(N열)를 채워줍니다.</div>
+    <div class="row">
+      <div class="field">
+        <label>1단계/2단계 결과 파일 (약정금액이 채워진 xlsx)</label>
+        <input type="file" id="resultFile" accept=".xlsx,.xls">
+        <div class="filestatus" id="resultStatus">아직 업로드 안됨</div>
+      </div>
+      <div class="field">
+        <label>상부 정산서 (여러 파일 업로드 가능 — 접수월이 여러 개면 파일도 여러 개 선택하세요)</label>
+        <input type="file" id="supFile" accept=".xlsx,.xls" multiple>
+        <div class="filestatus" id="supStatus">아직 업로드 안됨</div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:14px;">
+      <div class="field">
+        <label>상부점 필터 (AL열="상부점" 값 — 이 값과 일치하는 고객만 매칭 대상)</label>
+        <input type="text" id="supPartnerFilter" placeholder="예: 스마일" list="supPartnerOptions">
+        <datalist id="supPartnerOptions"></datalist>
+      </div>
+    </div>
+
+    <div id="supColumnMapper" style="display:none; margin-top:16px;">
+      <div class="hint" style="margin-bottom:10px;">상부사마다 정산서 양식이 다르니, 파일별로 각각 컬럼 역할을 지정해주세요. (자동으로 추측해서 미리 선택해뒀습니다 — 확인 후 필요시 수정하세요)</div>
+      <div id="supColumnMapperFiles"></div>
+      <div class="actions">
+        <button class="btn-primary" id="supMatchBtn">매칭 실행</button>
+      </div>
+      <div class="hint">"금액(+)"는 더하고 "금액(-)"는 빼서 그 행의 금액을 계산합니다. "고객명"과 "서비스번호" 중 하나는 파일마다 반드시 지정해야 하며, 서비스번호(가입서비스)가 있으면 가장 정확하게 매칭됩니다. "접수일 매칭"은 선택사항이지만 지정하면 이름 매칭 정확도가 올라갑니다.</div>
+    </div>
+
+    <div id="supResultArea" style="display:none; margin-top:20px;">
+      <div class="stats" id="supStatsRow"></div>
+
+      <div id="supOnlyArea" style="display:none; margin-top:6px; margin-bottom:20px;">
+        <h2 style="font-size:14px; color:var(--warn); margin:0 0 10px;">⚠️ 상부 정산서에만 있고 우리 고객리스트엔 없는 건</h2>
+        <div class="tablewrap" style="max-height:280px;">
+          <table>
+            <thead><tr><th>고객명(정산서 표기)</th><th>서비스번호</th><th>날짜</th><th>금액</th><th>출처 파일</th></tr></thead>
+            <tbody id="supOnlyBody"></tbody>
+          </table>
+        </div>
+        <div class="hint">상부에서는 수수료를 줬는데, 우리 고객 리스트에서는 매칭되는 건을 찾지 못했습니다 — 리스트 누락이거나, 이름/번호 표기 차이일 수 있으니 확인해주세요.</div>
+      </div>
+
+      <div id="crossPartnerArea" style="display:none; margin-top:6px; margin-bottom:20px;">
+        <h2 style="font-size:14px; color:var(--warn); margin:0 0 10px;">⚠️ 상부점이 다른데 매칭된 건</h2>
+        <div class="tablewrap" style="max-height:280px;">
+          <table>
+            <thead><tr><th>고객명</th><th>상품명</th><th>AL열(상부점)</th><th>접수일</th><th>매칭방식</th><th>금액</th></tr></thead>
+            <tbody id="crossPartnerBody"></tbody>
+          </table>
+        </div>
+        <div class="hint">AL열(상부점)이 지정한 필터값이 아닌 고객인데, 이번에 올린 상부 정산서와 매칭이 됐습니다 — 동명이인이거나 서비스번호가 우연히 겹쳤을 수 있으니 확인해주세요. (매칭 결과 자체는 포함하지 않았습니다)</div>
+      </div>
+
+      <div class="toolbar">
+        <div class="left">
+          <select id="supFilterMode">
+            <option value="all">전체 보기</option>
+            <option value="unmatched">매칭실패만 보기</option>
+            <option value="anomaly">이상(하부&gt;상부)만 보기</option>
+          </select>
+        </div>
+        <div class="actions" style="margin:0;">
+          <button class="btn-accent" id="supDownloadBtn">엑셀 다운로드</button>
+        </div>
+      </div>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>고객명</th><th>상품명</th><th>접수일</th>
+              <th>하부수수료(약정+셋탑+부가)</th><th>상부수수료(N열)</th><th>상태</th><th>비고</th>
+            </tr>
+          </thead>
+          <tbody id="supResultBody"></tbody>
+        </table>
+      </div>
+      <div class="footer-note">
+        <b>이상(주황)</b>은 하부수수료가 상부수수료보다 큰 경우입니다 — 이력을 확인해보세요. 다운로드한 엑셀에서는 해당 행 전체가 <span style="color:red;">빨간 글씨</span>로 표시됩니다.<br>
+        <b>일치(파랑)</b>는 하부수수료와 상부수수료가 정확히 같은 경우입니다 — 다운로드한 엑셀에서는 해당 행 전체가 <span style="color:blue;">파란 글씨</span>로 표시됩니다.<br>
+        <b>매칭실패(회색)</b>는 상부 정산서에서 같은 고객을 찾지 못한 경우입니다 — 이름 표기 차이일 수 있으니 직접 확인해주세요.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// 통신사 수수료 계산 엔진
+// 브라우저(window)와 Node.js(module.exports) 양쪽에서 동작
+// ============================================================
+
+(function (root) {
+
+  // ---------- 공통 유틸 ----------
+
+  function normText(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/\s+/g, '').trim();
+  }
+
+  function toNum(v) {
+    if (v === null || v === undefined || v === '') return 0;
+    if (typeof v === 'number') return v;
+    const n = parseFloat(String(v).replace(/,/g, ''));
+    return isNaN(n) ? 0 : n;
+  }
+
+  // 셀 값에서 날짜 추출 (Date 객체, 엑셀 시리얼넘버, 또는 "8월 03일 10:00" 같은 문자열)
+  function parseCellDate(v, refYear) {
+    if (v === null || v === undefined || v === '') return null;
+    if (v instanceof Date) return v;
+    if (typeof v === 'number') {
+      // 엑셀 시리얼 날짜
+      const epoch = new Date(Date.UTC(1899, 11, 30));
+      return new Date(epoch.getTime() + v * 86400000);
+    }
+    const s = String(v).trim();
+    // "2026-08-11  14:00:00 PM" 같은 문자열
+    let m = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})[^\d]+(\d{1,2}):(\d{2})/);
+    if (m) {
+      return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]));
+    }
+    // "8월 03일 10:00" / "08월 03일 10시 00분"
+    m = s.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*(\d{1,2})\s*[:시]\s*(\d{1,2})?/);
+    if (m) {
+      const year = refYear || new Date().getFullYear();
+      const hh = +m[3] || 0;
+      const mm = +m[4] || 0;
+      return new Date(Date.UTC(year, +m[1] - 1, +m[2], hh, mm));
+    }
+    return null;
+  }
+
+  function extractSpeed(text) {
+    const t = normText(text);
+    if (/1[gG]/.test(t)) return '1G';
+    if (/500[mM]/.test(t)) return '500M';
+    if (/200[mM]/.test(t)) return '200M';
+    if (/100[mM]/.test(t)) return '100M';
+    return null;
+  }
+
+  // ---------- 수수료표(fee sheet) 파서 ----------
+
+  // 일반형 시트 (LG홈/SKB/SKT): 날짜가 1~2행, 값 컬럼 오프셋 고정
+  // dateRowIdx: 날짜가 있는 행(0-based), valueColOffset: 날짜열 대비 값열 위치
+  function parseGenericFeeSheet(aoa, opts) {
+    const { dateRowIdx, valueColOffset, dataStartRow, refYear, categoryCol = 0, labelCol = 1, keyPrefix = '' } = opts;
+    const dateRow = aoa[dateRowIdx] || [];
+    const dateCols = [];
+    for (let c = 0; c < dateRow.length; c++) {
+      const d = parseCellDate(dateRow[c], refYear);
+      if (d) dateCols.push({ col: keyPrefix + 'c' + c, rawCol: c, date: d });
+    }
+    dateCols.sort((a, b) => a.date - b.date);
+
+    const rows = [];
+    for (let r = dataStartRow; r < aoa.length; r++) {
+      const row = aoa[r] || [];
+      const category = categoryCol !== null && row[categoryCol] !== undefined && row[categoryCol] !== null && row[categoryCol] !== '' ? String(row[categoryCol]).trim() : null;
+      const label = row[labelCol] !== undefined && row[labelCol] !== null && row[labelCol] !== '' ? String(row[labelCol]).trim() : null;
+      if (!label) continue;
+      const valuesByCol = {};
+      dateCols.forEach(dc => {
+        valuesByCol[dc.col] = toNum(row[dc.rawCol + valueColOffset]);
+      });
+      rows.push({ rowIdx: r, category, label, valuesByCol });
+    }
+    // 카테고리 이월 채우기 (병합셀처럼 아래로 상속)
+    let lastCat = null;
+    rows.forEach(r => {
+      if (r.category) lastCat = r.category;
+      else r.category = lastCat;
+    });
+
+    return { dateCols, rows };
+  }
+
+  // 값을 가져오는 헬퍼: 주어진 날짜 <= targetDate 인 가장 가까운(최근) 날짜의 값
+  function findDateCol(dateCols, targetDate) {
+    if (!targetDate || dateCols.length === 0) return null;
+    let best = null;
+    for (const dc of dateCols) {
+      if (dc.date <= targetDate) {
+        if (!best || dc.date > best.date) best = dc;
+      }
+    }
+    if (!best) {
+      // 접수일보다 이전 데이터가 없으면 가장 이른 날짜 사용 (새 객체로 복사해 원본 오염 방지)
+      best = { col: dateCols[0].col, date: dateCols[0].date, _beforeAll: true };
+    }
+    return best;
+  }
+
+  function flagBeforeAll(res, notes) {
+    if (res && res.beforeAll) {
+      notes.push('⚠️접수일 이전 수수료데이터 없음(가장 이른 날짜로 임시계산, 확인필요)');
+      return false;
+    }
+    return true;
+  }
+
+  // 라벨 대소문자/띄어쓰기 차이 무시하고 비교용 키로 정규화 (예: "다셋탑 스탠다드tv" vs "다셋탑 스탠다드TV")
+  function normLabelKey(s) {
+    return String(s || '').replace(/\s+/g, '').toLowerCase();
+  }
+  function getValue(parsed, label, targetDate) {
+    // 정확히 일치하는 라벨을 먼저 찾고, 없으면 대소문자/띄어쓰기 차이만 있는 라벨로 한번 더 찾는다.
+    // (수수료표마다 "TV"/"tv", "ALL"/"all" 등 표기가 매번 바뀌어서 정확매칭만으론 자주 놓쳤음)
+    let row = parsed.rows.find(r => r.label === label);
+    if (!row) {
+      const key = normLabelKey(label);
+      row = parsed.rows.find(r => normLabelKey(r.label) === key);
+    }
+    if (!row) return { value: 0, found: false };
+    const dc = findDateCol(parsed.dateCols, targetDate);
+    if (!dc) return { value: 0, found: false };
+    return { value: row.valuesByCol[dc.col] || 0, found: true, beforeAll: !!dc._beforeAll, dateUsed: dc.date };
+  }
+
+  function findRowByLabelContains(parsed, keywords) {
+    // keywords: 배열, 모두 포함하는 라벨을 찾음 (정규화 후 부분일치)
+    // 'ALL' 같은 영문 키워드는 수수료표마다 대소문자가 바뀌는 경우가 있어 대소문자 구분 없이 비교한다.
+    const normKeys = keywords.map(k => normText(k).toLowerCase()).filter(Boolean);
+    return parsed.rows.find(r => {
+      const nl = normText(r.label).toLowerCase();
+      return normKeys.every(k => nl.includes(k));
+    }) || null;
+  }
+
+  // KT 전용 파서 (VAT포함/미포함 x 일반/패밀리 4단 구조, 블록폭 5)
+  function parseKTFeeSheet(aoa, refYear, keyPrefix) {
+    keyPrefix = keyPrefix || '';
+    const dateRow = aoa[1] || []; // 행2 (0-based index1)
+    const dateCols = [];
+    for (let c = 0; c < dateRow.length; c++) {
+      const d = parseCellDate(dateRow[c], refYear);
+      if (d) dateCols.push({ col: keyPrefix + 'c' + c, rawCol: c, date: d });
+    }
+    dateCols.sort((a, b) => a.date - b.date);
+
+    const rows = [];
+    for (let r = 4; r < aoa.length; r++) { // 데이터 행5부터 (0-based 4)
+      const row = aoa[r] || [];
+      const category = row[0] ? String(row[0]).trim() : null;
+      const label = row[1] ? String(row[1]).trim() : null;
+      if (!label) continue;
+      const valuesByCol = {}; // key: `${dateCol}_general` / `${dateCol}_family`
+      dateCols.forEach(dc => {
+        valuesByCol[dc.col + '_general'] = toNum(row[dc.rawCol + 2]); // VAT미포함 일반
+        valuesByCol[dc.col + '_family'] = toNum(row[dc.rawCol + 3]);  // VAT미포함 패밀리
+      });
+      rows.push({ rowIdx: r, category, label, valuesByCol });
+    }
+    let lastCat = null;
+    rows.forEach(r => {
+      if (r.category) lastCat = r.category;
+      else r.category = lastCat;
+    });
+    return { dateCols, rows };
+  }
+
+  function getKTValue(parsed, category, label, isFamily, targetDate) {
+    // 다른 라벨 조회와 마찬가지로, 정확히 일치하는 category+label이 없으면
+    // 띄어쓰기/대소문자 차이만 무시하고 한 번 더 찾는다.
+    let row = parsed.rows.find(r => r.category === category && r.label === label);
+    if (!row) {
+      const catKey = normLabelKey(category), labKey = normLabelKey(label);
+      row = parsed.rows.find(r => normLabelKey(r.category) === catKey && normLabelKey(r.label) === labKey);
+    }
+    if (!row) return { value: 0, found: false };
+    const dc = findDateCol(parsed.dateCols, targetDate);
+    if (!dc) return { value: 0, found: false };
+    const key = dc.col + (isFamily ? '_family' : '_general');
+    return { value: row.valuesByCol[key] || 0, found: true, beforeAll: !!dc._beforeAll, dateUsed: dc.date };
+  }
+
+  // LG소호 전용 파서 (날짜열 없음, 단일 표. 수수료는 만원 단위)
+  function parseLGSohoSheet(aoa) {
+    const rows = [];
+    let lastYuhyung = null, lastSangpum = null, lastGyulhap = null;
+    for (let r = 3; r < aoa.length; r++) {
+      const row = aoa[r] || [];
+      const yuhyung = row[1] !== undefined && row[1] !== null && row[1] !== '' ? String(row[1]).trim() : null;
+      const sangpum = row[2] !== undefined && row[2] !== null && row[2] !== '' ? String(row[2]).trim() : null;
+      const gyulhap = row[3] !== undefined && row[3] !== null && row[3] !== '' ? String(row[3]).trim() : null;
+      const plan = row[4] !== undefined && row[4] !== null && row[4] !== '' ? String(row[4]).trim() : null;
+      if (!plan) continue;
+      if (yuhyung) lastYuhyung = yuhyung;
+      if (sangpum) { lastSangpum = sangpum; lastGyulhap = gyulhap; }
+      else if (gyulhap) lastGyulhap = gyulhap;
+      const feeWon = toNum(row[5]) * 10000;
+      rows.push({ yuhyung: lastYuhyung, sangpum: lastSangpum, gyulhap: lastGyulhap, plan, feeWon });
+    }
+    return rows;
+  }
+
+  // ---------- 통신사별 계산기 ----------
+
+  const CARRIER_SHEET_MAP = [
+    // 순서 중요: 더 구체적인 것 먼저
+    { test: (p) => p.startsWith('KT_SKY'), sheet: 'KT 스카이', carrier: 'KT_SKY' },
+    { test: (p) => p.startsWith('LG소호'), sheet: 'LG소호(0806)', carrier: 'LG소호' },
+    { test: (p) => p.startsWith('LG U+'), sheet: 'LG홈', carrier: 'LGU' },
+    { test: (p) => p.startsWith('SK브로드밴드'), sheet: 'SKB', carrier: 'SKB' },
+    { test: (p) => p.startsWith('SKT'), sheet: 'SKT', carrier: 'SKT' },
+    { test: (p) => p.startsWith('헬로'), sheet: 'LG헬로비전', carrier: 'HELLO' },
+    { test: (p) => p.startsWith('KT'), sheet: 'KT', carrier: 'KT' },
+  ];
+
+  function detectCarrier(productName) {
+    const p = String(productName || '');
+    for (const m of CARRIER_SHEET_MAP) {
+      if (m.test(p)) return m;
+    }
+    return null;
+  }
+
+  function isOSSCustomer(name) {
+    return /oss/i.test(String(name || ''));
+  }
+
+  function isTVProduct(p) { return /_TV$/.test(p); }
+  function isInternetProduct(p) { return /_인터넷$/.test(p); }
+  function isPhoneProduct(p) { return /_전화$/.test(p); }
+
+  // 계산 엔진 메인 클래스
+  class FeeEngine {
+    // feeFiles: [{ tag: 'f0', sheets: { 시트명: aoa } }, ...] 또는 하위호환으로 { 시트명: aoa } 단일 객체도 허용
+    constructor(feeFiles, refYear) {
+      this.refYear = refYear || new Date().getFullYear();
+      if (Array.isArray(feeFiles)) {
+        this.feeFiles = feeFiles;
+      } else {
+        this.feeFiles = [{ tag: 'f0', sheets: feeFiles }];
+      }
+      this.sheets = this.feeFiles[0] ? this.feeFiles[0].sheets : {}; // LG소호 등 하위호환용
+      this.parsedCache = {};
+    }
+
+    parseOneFile(sheetName, aoa, keyPrefix) {
+      if (sheetName === 'KT') return parseKTFeeSheet(aoa, this.refYear, keyPrefix);
+      if (sheetName === 'LG홈') return parseGenericFeeSheet(aoa, { dateRowIdx: 1, valueColOffset: 1, dataStartRow: 3, refYear: this.refYear, keyPrefix });
+      if (sheetName === 'SKB') return parseGenericFeeSheet(aoa, { dateRowIdx: 1, valueColOffset: 0, dataStartRow: 3, refYear: this.refYear, keyPrefix });
+      if (sheetName === 'SKT') return parseGenericFeeSheet(aoa, { dateRowIdx: 1, valueColOffset: 0, dataStartRow: 3, refYear: this.refYear, keyPrefix });
+      if (sheetName === 'KT 스카이') return parseGenericFeeSheet(aoa, { dateRowIdx: 1, valueColOffset: 1, dataStartRow: 4, refYear: this.refYear, categoryCol: null, labelCol: 0, keyPrefix });
+      if (sheetName === 'LG헬로비전') return parseGenericFeeSheet(aoa, { dateRowIdx: 2, valueColOffset: 3, dataStartRow: 5, refYear: this.refYear, keyPrefix });
+      return null;
+    }
+
+    // 여러 수수료 파일에 같은 시트명이 있으면 날짜열을 모두 합쳐서(merge) 사용
+    getParsed(sheetName) {
+      if (this.parsedCache[sheetName] !== undefined) return this.parsedCache[sheetName];
+      const merged = { dateCols: [], rows: [] };
+      let any = false;
+      this.feeFiles.forEach((f, fi) => {
+        const aoa = f.sheets && f.sheets[sheetName];
+        if (!aoa) return;
+        const parsed = this.parseOneFile(sheetName, aoa, 'f' + fi + '_');
+        if (!parsed) return;
+        any = true;
+        merged.dateCols.push(...parsed.dateCols);
+        parsed.rows.forEach(r => {
+          let existing = merged.rows.find(m => m.label === r.label && m.category === r.category);
+          if (!existing) {
+            existing = { rowIdx: r.rowIdx, category: r.category, label: r.label, valuesByCol: {} };
+            merged.rows.push(existing);
+          }
+          Object.assign(existing.valuesByCol, r.valuesByCol);
+        });
+      });
+      merged.dateCols.sort((a, b) => a.date - b.date);
+      const parsedResult = any ? merged : null;
+      this.parsedCache[sheetName] = parsedResult;
+      return parsedResult;
+    }
+
+    // group: 같은 가입서비스(계정)의 형제 상품 리스트 [{상품명, 상품옵션, 셋트}, ...]
+    // targetRow: 지금 계산할 그 행
+    // targetDate: 접수일 Date 객체
+    compute(carrierInfo, targetRow, group, targetDate) {
+      const carrier = carrierInfo.carrier;
+      const product = targetRow['상품명'];
+      const option = targetRow['상품옵션'];
+      const custName = targetRow['고객명'];
+
+      const hasTV = group.some(g => isTVProduct(g['상품명']));
+      const hasPhone = group.some(g => isPhoneProduct(g['상품명']));
+      const tvSibling = group.find(g => isTVProduct(g['상품명']));
+      const phoneSibling = group.find(g => isPhoneProduct(g['상품명']));
+
+      // 같은 가입서비스에 서로 다른 TV/전화 옵션이 중복으로 들어있는 경우 감지 (원본 데이터 이상 가능성)
+      const tvOptionSet = new Set(group.filter(g => isTVProduct(g['상품명'])).map(g => normText(g['상품옵션'])));
+      const phoneOptionSet = new Set(group.filter(g => isPhoneProduct(g['상품명'])).map(g => normText(g['상품옵션'])));
+      const ambiguousNote = [];
+      if (tvOptionSet.size > 1 && carrier !== 'KT' && carrier !== 'SKB' && carrier !== 'KT_SKY' && carrier !== 'SKT' && carrier !== 'LGU') ambiguousNote.push(`⚠️TV옵션 중복(${[...tvOptionSet].join('/')}) - "${tvSibling && tvSibling['상품옵션']}"로 계산됨, 원본데이터 확인필요`);
+      if (phoneOptionSet.size > 1) ambiguousNote.push(`⚠️전화옵션 중복(${[...phoneOptionSet].join('/')}) - "${phoneSibling && phoneSibling['상품옵션']}"로 계산됨, 원본데이터 확인필요`);
+
+      // TV/전화 행은 0, 합산값은 인터넷 행에 (KT는 전화도 인터넷행에 합산)
+      // 단, KT/SKB는 TV가 중복(2줄 이상)인 경우 메인 TV행=0, 나머지 TV행=추가단말(다셋탑) 수수료를 각 행에 직접 입력
+      if (isTVProduct(product)) {
+        if (carrier === 'KT') {
+          return this.calcKTTVRow(targetRow, group, targetDate);
+        }
+        if (carrier === 'SKB') {
+          return this.calcSKBTVRow(targetRow, group, targetDate);
+        }
+        if (carrier === 'KT_SKY') {
+          return this.calcKTSkyTVRow(targetRow, group, targetDate);
+        }
+        if (carrier === 'SKT') {
+          return this.calcSKTTVRow(targetRow, group, targetDate);
+        }
+        if (carrier === 'LGU') {
+          return this.calcLGUTVRow(targetRow, group, targetDate);
+        }
+        return { value: 0, note: 'TV행(합산은 인터넷행)', confident: true };
+      }
+      if (isPhoneProduct(product) && carrier !== 'KT') {
+        return { value: 0, note: '전화행(미지원, 0)', confident: true };
+      }
+      if (!isInternetProduct(product) && !(carrier === 'KT' && isPhoneProduct(product))) {
+        return { value: 0, note: '지원안함(수동확인)', confident: false };
+      }
+
+      let result;
+      switch (carrier) {
+        case 'LGU': result = this.calcLGU(option, hasTV, tvSibling, targetDate, custName); break;
+        case 'SKB': result = this.calcSKB(option, hasTV, hasPhone, tvSibling, targetDate, custName, group.filter(g => isTVProduct(g['상품명']))); break;
+        case 'SKT': result = this.calcSKT(option, hasTV, tvSibling, targetDate, custName, group.filter(g => isTVProduct(g['상품명']))); break;
+        case 'HELLO': result = this.calcHello(option, hasTV, tvSibling, targetDate); break;
+        case 'KT': result = this.calcKT(product, option, hasTV, hasPhone, tvSibling, phoneSibling, targetRow, targetDate, group.filter(g => isTVProduct(g['상품명']))); break;
+        case 'KT_SKY': result = this.calcKTSky(option, hasTV, tvSibling, targetDate, custName); break;
+        case 'LG소호': result = { value: 0, note: 'LG소호는 약정금액 자동계산 미지원(수동입력)', confident: false }; break;
+        default:
+          result = { value: 0, note: '미지원 통신사(수동확인)', confident: false };
+      }
+      if (ambiguousNote.length) {
+        result = { value: result.value, note: result.note + ' ' + ambiguousNote.join(' '), confident: false, stbAddon: result.stbAddon };
+      }
+      return result;
+    }
+
+    calcLGU(option, hasTV, tvSibling, targetDate, custName) {
+      const parsed = this.getParsed('LG홈');
+      if (!parsed) return { value: 0, note: 'LG홈 시트 없음', confident: false };
+      const speed = extractSpeed(option);
+      let notes = [];
+      let total = 0;
+      let confident = true;
+
+      if (hasTV) {
+        const base = getValue(parsed, '100M/200M+실속형 / 기본형', targetDate);
+        total += base.value;
+        notes.push(`DPS기준(${base.value})`);
+        if (!base.found) confident = false;
+        if (!flagBeforeAll(base, notes)) confident = false;
+        if (speed === '500M') {
+          const add = getValue(parsed, '500M(번들)', targetDate);
+          total += add.value;
+          notes.push(`+500M번들(${add.value})`);
+        } else if (speed === '1G') {
+          const add = getValue(parsed, '1G(번들)', targetDate);
+          total += add.value;
+          notes.push(`+1G번들(${add.value})`);
+        }
+        // TV 옵션이 "프리미엄"이면 실속형/기본형 DPS기준에 프리미엄 추가금액을 더함
+        const tvOptNorm = tvSibling ? normText(tvSibling['상품옵션']) : '';
+        if (tvOptNorm.includes('프리미엄')) {
+          const addPrem = getValue(parsed, '프리미엄/프리미엄+', targetDate);
+          total += addPrem.value;
+          notes.push(`+프리미엄TV(${addPrem.value})`);
+          if (tvOptNorm.includes('VOD')) {
+            const addVod = getValue(parsed, '프리미엄 VOD', targetDate);
+            total += addVod.value;
+            notes.push(`+프리미엄VOD(${addVod.value})`);
+          }
+        }
+        // 인터넷 옵션의 "프리미엄 안심보상" / "프리미엄 안심"은 서로 다른 행(둘 다 있으면 안심보상 우선)
+        const optNorm = normText(option);
+        if (optNorm.includes('안심보상')) {
+          const add = getValue(parsed, '프리미엄 안심보상', targetDate);
+          total += add.value;
+          notes.push(`+안심보상(${add.value})`);
+        } else if (optNorm.includes('안심')) {
+          const add = getValue(parsed, '프리미엄 안심', targetDate);
+          total += add.value;
+          notes.push(`+안심(${add.value})`);
+        }
+      } else {
+        let label = null;
+        if (speed === '100M' || speed === '200M') label = '100M/200M';
+        else if (speed === '500M') label = '500M';
+        else if (speed === '1G') label = '1G';
+        if (!label) { confident = false; notes.push('속도인식실패'); }
+        else {
+          const base = getValue(parsed, label, targetDate);
+          total += base.value;
+          notes.push(`단독(${base.value})`);
+          if (!base.found) confident = false;
+          if (!flagBeforeAll(base, notes)) confident = false;
+        }
+      }
+      let stbAddon = 0;
+      if (isOSSCustomer(custName)) {
+        const oss = getValue(parsed, 'OSS(단독불가)', targetDate);
+        stbAddon = oss.value; // 약정금액에는 합산하지 않고, 셋탑박스(P열)에 별도로 입력
+        notes.push(`(OSS ${oss.value}원은 셋탑박스란에 별도입력)`);
+      }
+      return { value: total, note: notes.join(' '), confident, stbAddon };
+    }
+
+    // LG U+_TV가 같은 가입서비스에 중복(2줄 이상)으로 들어있을 때: 첫번째=메인(0원), 나머지=추가셋탑(100,000원, 화질 구분 없이 고정)
+    calcLGUTVRow(targetRow, group, targetDate) {
+      const tvRows = group.filter(g => isTVProduct(g['상품명']));
+      if (tvRows.length <= 1) {
+        return { value: 0, note: 'TV행(합산은 인터넷행)', confident: true };
+      }
+      const parsed = this.getParsed('LG홈');
+      if (!parsed) return { value: 0, note: 'LG홈 시트 없음', confident: false };
+
+      // LG U+는 TV옵션(실속형/기본형/프리미엄)별로 가격 차이가 나는 별도 테이블이 없어
+      // "높은 쪽"을 가릴 기준이 없으므로, 첫번째 행을 메인으로 고정한다
+      const main = tvRows[0];
+      const isMain = main.__srcRow !== undefined && targetRow.__srcRow !== undefined
+        ? main.__srcRow === targetRow.__srcRow
+        : main === targetRow;
+
+      if (isMain) {
+        return { value: 0, note: `TV행(메인="${targetRow['상품옵션']}", 합산은 인터넷행)`, confident: true };
+      }
+      const extraRow = getValue(parsed, '추가셋탑', targetDate);
+      return {
+        value: extraRow.value,
+        note: `TV행(추가셋탑="${targetRow['상품옵션']}"=${extraRow.value}, 메인은 "${main['상품옵션']}")`,
+        confident: extraRow.found
+      };
+    }
+
+    calcSKB(option, hasTV, hasPhone, tvSibling, targetDate, custName, tvRows) {
+      const parsed = this.getParsed('SKB');
+      if (!parsed) return { value: 0, note: 'SKB 시트 없음', confident: false };
+      const speed = extractSpeed(option);
+      let total = 0, notes = [], confident = true;
+
+      let baseLabel;
+      if (hasTV && hasPhone) baseLabel = '광랜+전화+TV(스탠다드 기준)';
+      else if (hasTV) baseLabel = '광랜+TV(스탠다드 기준)';
+      else if (hasPhone) baseLabel = '광랜+전화';
+      else baseLabel = '광랜';
+      const base = getValue(parsed, baseLabel, targetDate);
+      total += base.value;
+      notes.push(`기준(${baseLabel}=${base.value})`);
+      if (!base.found) confident = false;
+
+      if (speed === '500M') {
+        const add = getValue(parsed, hasTV ? '기가라이트 TV DPS, TPS' : '기가라이트 단독, 전화DPS', targetDate);
+        total += add.value; notes.push(`+속도(${add.value})`);
+      } else if (speed === '1G') {
+        const add = getValue(parsed, hasTV ? '1기가 TV DPS, TPS' : '1기가 단독, 전화DPS', targetDate);
+        total += add.value; notes.push(`+속도(${add.value})`);
+      }
+
+      if (hasTV && tvSibling) {
+        // TV가 여러 줄(중복)이면 화질이 가장 높은(수수료가 가장 높은) 옵션을 기준으로 계산
+        const candList = (tvRows && tvRows.length ? tvRows : [tvSibling]).map(tv => {
+          const tvOpt = normText(tv['상품옵션']);
+          let qLabel = null;
+          if (tvOpt.includes('이코노미')) qLabel = '이코노미';
+          else if (tvOpt.includes('스탠다드')) qLabel = '스탠다드';
+          else if (tvOpt.includes('ALL') || tvOpt.includes('all')) qLabel = 'B tv All';
+          if (!qLabel) return { tv, qLabel: null, val: -Infinity };
+          const q = getValue(parsed, qLabel, targetDate);
+          return { tv, qLabel, val: q.found ? q.value : -Infinity };
+        });
+        const validQ = candList.filter(c => c.val > -Infinity);
+        if (validQ.length) {
+          const bestQ = validQ.reduce((a, b) => (b.val > a.val ? b : a), validQ[0]);
+          total += bestQ.val; notes.push(`+화질(${bestQ.qLabel}=${bestQ.val})`);
+          if (candList.length > 1) notes.push(`(중복TV ${candList.length}개 중 최고화질 적용, 나머지는 각 TV행에 다셋탑 추가단말로 별도입력)`);
+        } else { confident = false; notes.push('TV화질인식실패'); }
+      }
+      let stbAddon = 0;
+      if (isOSSCustomer(custName)) {
+        const oss = getValue(parsed, 'OSS', targetDate);
+        stbAddon = oss.value; // 약정금액에는 합산하지 않고, 셋탑박스(P열)에 별도로 입력
+        notes.push(`(OSS ${oss.value}원은 셋탑박스란에 별도입력)`);
+      }
+      return { value: total, note: notes.join(' '), confident, stbAddon };
+    }
+
+    // SKB_TV가 같은 가입서비스에 중복(2줄 이상)으로 들어있을 때: 메인(최고화질)=0, 나머지=다셋탑 추가단말(화질별)
+    calcSKBTVRow(targetRow, group, targetDate) {
+      const tvRows = group.filter(g => isTVProduct(g['상품명']));
+      if (tvRows.length <= 1) {
+        return { value: 0, note: 'TV행(합산은 인터넷행)', confident: true };
+      }
+      const parsed = this.getParsed('SKB');
+      if (!parsed) return { value: 0, note: 'SKB 시트 없음', confident: false };
+
+      function qLabelOf(tvOptText) {
+        const t = normText(tvOptText);
+        if (t.includes('이코노미')) return '이코노미';
+        if (t.includes('스탠다드')) return '스탠다드';
+        if (t.includes('ALL') || t.includes('all')) return 'B tv All';
+        return null;
+      }
+      const candidates = tvRows.map(tv => {
+        const qLabel = qLabelOf(tv['상품옵션']);
+        if (!qLabel) return { tv, qLabel: null, val: -Infinity };
+        const q = getValue(parsed, qLabel, targetDate);
+        return { tv, qLabel, val: q.found ? q.value : -Infinity };
+      });
+      const valid = candidates.filter(c => c.val > -Infinity);
+      if (!valid.length) return { value: 0, note: 'TV행(중복, 화질인식실패, 확인필요)', confident: false };
+
+      const main = valid.reduce((a, b) => (b.val > a.val ? b : a), valid[0]);
+      const isMain = main.tv.__srcRow !== undefined && targetRow.__srcRow !== undefined
+        ? main.tv.__srcRow === targetRow.__srcRow
+        : main.tv === targetRow;
+
+      if (isMain) {
+        return { value: 0, note: `TV행(메인="${targetRow['상품옵션']}", 합산은 인터넷행)`, confident: true };
+      }
+      const myQLabel = qLabelOf(targetRow['상품옵션']);
+      let extraLabel = null;
+      if (myQLabel === '이코노미') extraLabel = '다셋탑 이코노미tv';
+      else if (myQLabel === '스탠다드') extraLabel = '다셋탑 스탠다드tv';
+      else if (myQLabel === 'B tv All') extraLabel = '다셋탑 all TV';
+      if (!extraLabel) return { value: 0, note: 'TV행(추가, 화질인식실패, 확인필요)', confident: false };
+      const extraRow = getValue(parsed, extraLabel, targetDate);
+      return {
+        value: extraRow.value,
+        note: `TV행(추가단말="${targetRow['상품옵션']}"=${extraRow.value}, 메인은 "${main.tv['상품옵션']}")`,
+        confident: extraRow.found
+      };
+    }
+
+    calcSKT(option, hasTV, tvSibling, targetDate, custName, tvRows) {
+      const parsed = this.getParsed('SKT');
+      if (!parsed) return { value: 0, note: 'SKT 시트 없음', confident: false };
+      const speed = extractSpeed(option);
+      let total = 0, notes = [], confident = true;
+
+      if (hasTV) {
+        let label = null;
+        if (speed === '100M') label = '광랜+이코노미 TV';
+        else if (speed === '500M') label = '500메가+이코노미 TV';
+        else if (speed === '1G') label = '1기가+이코노미 TV';
+        if (!label) { confident = false; notes.push('속도인식실패'); }
+        else {
+          const base = getValue(parsed, label, targetDate);
+          total += base.value; notes.push(`TV번들기준(${base.value})`);
+          if (!base.found) confident = false;
+        }
+        // TV가 여러 줄(중복)이면 화질(이코노미=0/스탠다드=130000/ALL=170000)이 가장 높은 옵션을 기준으로 계산
+        const candList = (tvRows && tvRows.length ? tvRows : (tvSibling ? [tvSibling] : [])).map(tv => {
+          const tvOpt = normText(tv['상품옵션']);
+          let qLabel = null, val = 0;
+          if (tvOpt.includes('스탠다드')) { qLabel = 'BTV 스탠다드'; }
+          else if (tvOpt.includes('ALL')) { qLabel = 'BTV ALL  (MAX포함)'; }
+          else { qLabel = null; val = 0; } // 이코노미(기본)는 추가금액 0
+          if (qLabel) { const q = getValue(parsed, qLabel, targetDate); val = q.value; }
+          return { tv, qLabel, val };
+        });
+        if (candList.length) {
+          const bestQ = candList.reduce((a, b) => (b.val > a.val ? b : a), candList[0]);
+          if (bestQ.val > 0) { total += bestQ.val; notes.push(`+화질(${bestQ.qLabel}=${bestQ.val})`); }
+          if (candList.length > 1) notes.push(`(중복TV ${candList.length}개 중 최고화질 적용, 나머지는 각 TV행에 다셋탑 추가단말로 별도입력)`);
+        }
+      } else {
+        let label = null;
+        if (speed === '100M') label = '광랜 인터넷';
+        else if (speed === '500M') label = '기가라이트 인터넷';
+        else if (speed === '1G') label = '1기가 인터넷';
+        if (!label) { confident = false; notes.push('속도인식실패'); }
+        else {
+          const base = getValue(parsed, label, targetDate);
+          total += base.value; notes.push(`단독(${base.value})`);
+          if (!base.found) confident = false;
+        }
+      }
+      let stbAddon = 0;
+      if (isOSSCustomer(custName)) {
+        const oss = getValue(parsed, 'OSS', targetDate);
+        stbAddon = oss.value; // 약정금액에는 합산하지 않고, 셋탑박스(P열)에 별도로 입력
+        notes.push(`(OSS ${oss.value}원은 셋탑박스란에 별도입력)`);
+      }
+      return { value: total, note: notes.join(' '), confident, stbAddon };
+    }
+
+    // SKT_TV가 같은 가입서비스에 중복(2줄 이상)으로 들어있을 때: 메인(최고화질)=0, 나머지=다셋탑(화질별)
+    calcSKTTVRow(targetRow, group, targetDate) {
+      const tvRows = group.filter(g => isTVProduct(g['상품명']));
+      if (tvRows.length <= 1) {
+        return { value: 0, note: 'TV행(합산은 인터넷행)', confident: true };
+      }
+      const parsed = this.getParsed('SKT');
+      if (!parsed) return { value: 0, note: 'SKT 시트 없음', confident: false };
+
+      function qOf(tvOptText) {
+        const t = normText(tvOptText);
+        if (t.includes('스탠다드')) return { label: 'BTV 스탠다드', tier: '스탠다드' };
+        if (t.includes('ALL')) return { label: 'BTV ALL  (MAX포함)', tier: 'ALL' };
+        return { label: null, tier: '이코노미' }; // 기본(이코노미)
+      }
+      const candidates = tvRows.map(tv => {
+        const q = qOf(tv['상품옵션']);
+        const val = q.label ? getValue(parsed, q.label, targetDate).value : 0;
+        return { tv, tier: q.tier, val };
+      });
+      const main = candidates.reduce((a, b) => (b.val > a.val ? b : a), candidates[0]);
+      const isMain = main.tv.__srcRow !== undefined && targetRow.__srcRow !== undefined
+        ? main.tv.__srcRow === targetRow.__srcRow
+        : main.tv === targetRow;
+
+      if (isMain) {
+        return { value: 0, note: `TV행(메인="${targetRow['상품옵션']}", 합산은 인터넷행)`, confident: true };
+      }
+      const myTier = qOf(targetRow['상품옵션']).tier;
+      let extraLabel = null;
+      if (myTier === '이코노미') extraLabel = '다셋탑(이코노미)';
+      else if (myTier === '스탠다드') extraLabel = '다셋탑(스탠다드)';
+      else if (myTier === 'ALL') extraLabel = '다셋탑(ALL)';
+      const extraRow = getValue(parsed, extraLabel, targetDate);
+      return {
+        value: extraRow.value,
+        note: `TV행(추가단말="${targetRow['상품옵션']}"=${extraRow.value}, 메인은 "${main.tv['상품옵션']}")`,
+        confident: extraRow.found
+      };
+    }
+
+    calcHello(option, hasTV, tvSibling, targetDate) {
+      const parsed = this.getParsed('LG헬로비전');
+      if (!parsed) return { value: 0, note: '헬로비전 시트 없음', confident: false };
+      const speed = extractSpeed(option);
+      let speedLabel = null;
+      if (speed === '100M') speedLabel = '광랜 라이트';
+      else if (speed === '500M') speedLabel = '기가라이트';
+      else if (speed === '1G') speedLabel = '플레티넘기가';
+
+      if (!speedLabel) return { value: 0, note: '속도인식실패(수동확인)', confident: false };
+
+      if (hasTV && tvSibling) {
+        let tvOpt = normText(tvSibling['상품옵션']);
+        // 영문 표기 -> 한글 표기 정규화 (예: Pro라이트 -> 프로라이트)
+        tvOpt = tvOpt.replace(/pro/i, '프로');
+        const row = parsed.rows.find(r => {
+          const nl = normText(r.label);
+          return nl.includes(normText(speedLabel)) && tvOpt && nl.includes(tvOpt);
+        });
+        if (row) {
+          const dc = findDateCol(parsed.dateCols, targetDate);
+          const val = dc ? row.valuesByCol[dc.col] || 0 : 0;
+          return { value: val, note: `결합매칭(${row.label}=${val}) [중부권역기준]`, confident: true, beforeAll: dc && dc._beforeAll };
+        }
+        return { value: 0, note: '결합상품 매칭실패(수동확인)', confident: false };
+      } else {
+        const row = parsed.rows.find(r => normText(r.label) === normText(speedLabel + '(' + speed + ')') ||
+          (normText(r.label).includes(normText(speedLabel)) && !normText(r.label).includes('+')));
+        if (row) {
+          const dc = findDateCol(parsed.dateCols, targetDate);
+          const val = dc ? row.valuesByCol[dc.col] || 0 : 0;
+          return { value: val, note: `단독(${row.label}=${val}) [중부권역기준]`, confident: true, beforeAll: dc && dc._beforeAll };
+        }
+        return { value: 0, note: '단독상품 매칭실패(수동확인)', confident: false };
+      }
+    }
+
+    // KT_TV가 같은 가입서비스에 중복(2줄 이상)으로 들어있을 때, TV 행 하나하나에 대해
+    // "메인(가장 비싼 옵션)=0" 또는 "추가단말(30행)=136,364원 등"을 개별적으로 계산
+    calcKTTVRow(targetRow, group, targetDate) {
+      const tvRows = group.filter(g => isTVProduct(g['상품명']));
+      if (tvRows.length <= 1) {
+        return { value: 0, note: 'TV행(합산은 인터넷행)', confident: true };
+      }
+      const internetSibling = group.find(g => isInternetProduct(g['상품명']));
+      if (!internetSibling) {
+        return { value: 0, note: 'TV행(중복이나 인터넷 형제행 없음, 확인필요)', confident: false };
+      }
+      const parsed = this.getParsed('KT');
+      if (!parsed) return { value: 0, note: 'KT 시트 없음', confident: false };
+
+      const isRenewal = normText(targetRow['정산종류']).includes('갱신');
+      const isFamily = normText(internetSibling['상품옵션']).includes('패밀리');
+      const speed = extractSpeed(internetSibling['상품옵션']);
+      let speedTok = null;
+      if (speed === '100M') speedTok = '100';
+      else if (speed === '500M') speedTok = '500이상';
+      else if (speed === '1G') speedTok = '1G';
+      const category = isRenewal ? '약정갱신\n(모바일 결합 必)' : 'TV번들';
+
+      function qTokOf(tvOptText) {
+        const t = normText(tvOptText);
+        if (t.includes('베이직')) return '베이직';
+        if (t.includes('모든G')) return '모든G';
+        if (t.includes('에센스') || t.includes('라이트')) return '에센스';
+        return null;
+      }
+
+      if (!speedTok) return { value: 0, note: 'TV행(속도인식실패, 확인필요)', confident: false };
+
+      const dc = findDateCol(parsed.dateCols, targetDate);
+      const candidates = tvRows.map(tv => {
+        const qTok = qTokOf(tv['상품옵션']);
+        if (!qTok) return { tv, val: -1 };
+        const row = parsed.rows.find(r => r.category === category &&
+          normText(r.label).includes(speedTok) && normText(r.label).includes(qTok));
+        const val = row && dc ? (row.valuesByCol[dc.col + (isFamily ? '_family' : '_general')] || 0) : -1;
+        return { tv, val };
+      });
+      const valid = candidates.filter(c => c.val >= 0);
+      if (!valid.length) return { value: 0, note: 'TV행(중복, 매칭실패, 확인필요)', confident: false };
+
+      const main = valid.reduce((a, b) => (b.val > a.val ? b : a), valid[0]);
+      // 참조 비교 대신 원본 행 참조(__srcRow, 있으면) 또는 상품옵션 텍스트로 "같은 행인지" 판별
+      // (group과 targetRow가 서로 다른 시점에 새로 만들어진 객체일 수 있어 단순 참조비교(===)는 신뢰 불가)
+      const isMain = main.tv.__srcRow !== undefined && targetRow.__srcRow !== undefined
+        ? main.tv.__srcRow === targetRow.__srcRow
+        : main.tv === targetRow;
+
+      if (isMain) {
+        return { value: 0, note: `TV행(메인="${targetRow['상품옵션']}", 합산은 인터넷행)`, confident: true };
+      }
+      const extraRow = parsed.rows.find(r => r.category === '추가단말' && normText(r.label).includes('지니3'));
+      const extraVal = extraRow && dc ? (extraRow.valuesByCol[dc.col + (isFamily ? '_family' : '_general')] || 0) : 0;
+      return { value: extraVal, note: `TV행(추가단말="${targetRow['상품옵션']}"=${extraVal}, 메인은 "${main.tv['상품옵션']}")`, confident: true };
+    }
+
+    calcKT(product, option, hasTV, hasPhone, tvSibling, phoneSibling, targetRow, targetDate, tvRows) {
+      const parsed = this.getParsed('KT');
+      if (!parsed) return { value: 0, note: 'KT 시트 없음', confident: false };
+
+      const isRenewal = normText(targetRow['정산종류']).includes('갱신');
+
+      // 전화 단독 행 계산 (KT는 전화도 인터넷 행에 합산하므로, 전화행 자체는 0)
+      if (isPhoneProduct(product)) {
+        return { value: 0, note: '전화행(합산은 인터넷행)', confident: true };
+      }
+
+      const speed = extractSpeed(option);
+      const isFamily = normText(option).includes('패밀리');
+      let total = 0, notes = [], confident = true;
+
+      function qTokOf(tvOptText) {
+        const t = normText(tvOptText);
+        if (t.includes('베이직')) return '베이직';
+        if (t.includes('모든G')) return '모든G';
+        if (t.includes('에센스') || t.includes('라이트')) return '에센스';
+        return null;
+      }
+
+      if (hasTV && tvSibling) {
+        const category = isRenewal ? '약정갱신\n(모바일 결합 必)' : 'TV번들';
+        let speedTok = null;
+        if (speed === '100M') speedTok = '100';
+        else if (speed === '500M') speedTok = '500이상';
+        else if (speed === '1G') speedTok = '1G';
+
+        if (!speedTok) {
+          confident = false; notes.push('TV번들 속도 인식실패');
+        } else {
+          // KT_TV가 여러 줄(중복)인 경우: 각 옵션의 TV번들 수수료를 모두 계산해서
+          // 가장 높은 것을 메인으로 쓰고, 나머지는 "추가단말"로 처리
+          const candidates = (tvRows && tvRows.length ? tvRows : [tvSibling]).map(tv => {
+            const qTok = qTokOf(tv['상품옵션']);
+            if (!qTok) return { tv, qTok: null, row: null, val: -1 };
+            const row = parsed.rows.find(r => r.category === category &&
+              normText(r.label).includes(speedTok) && normText(r.label).includes(qTok));
+            const dc = findDateCol(parsed.dateCols, targetDate);
+            const val = row && dc ? (row.valuesByCol[dc.col + (isFamily ? '_family' : '_general')] || 0) : -1;
+            return { tv, qTok, row, val };
+          });
+
+          const failed = candidates.filter(c => c.val < 0);
+          if (failed.length === candidates.length) {
+            confident = false; notes.push('TV번들 매칭실패(전체)');
+          } else {
+            const valid = candidates.filter(c => c.val >= 0);
+            const main = valid.reduce((a, b) => (b.val > a.val ? b : a), valid[0]);
+            total += main.val;
+            notes.push(`TV번들(${main.row.label}${isFamily ? '/패밀리' : '/일반'}=${main.val})`);
+            if (failed.length) { confident = false; notes.push(`TV번들 일부매칭실패(${failed.map(f => f.tv['상품옵션']).join('/')})`); }
+            if (candidates.length > 1) notes.push(`(중복TV ${candidates.length}개 중 최고가 적용, 나머지는 각 TV행에 추가단말로 별도입력)`);
+          }
+        }
+      } else {
+        const category = isRenewal ? '약정갱신\n인터넷' : '인터넷';
+        let label = null;
+        if (speed === '100M') label = '100M 인터넷';
+        else if (speed === '500M') label = '500M 인터넷';
+        else if (speed === '1G') label = '1G 인터넷';
+        if (!label) { confident = false; notes.push('속도인식실패'); }
+        else {
+          const v = getKTValue(parsed, category, label, isFamily, targetDate);
+          total += v.value;
+          notes.push(`인터넷단독(${label}${isFamily ? '/패밀리' : '/일반'}=${v.value})`);
+          if (!v.found) confident = false;
+          if (!flagBeforeAll(v, notes)) confident = false;
+        }
+      }
+
+      if (hasPhone && phoneSibling) {
+        const pOpt = normText(phoneSibling['상품옵션']);
+        let pLabel = null;
+        if (pOpt.includes('유무선')) pLabel = '유무선3000요금제';
+        else if (pOpt.includes('유선')) pLabel = '유선3000요금제';
+        else if (pOpt.includes('인터넷전화') || pOpt.includes('번호이동')) pLabel = '우리끼리3000요금제';
+        if (pLabel) {
+          let row = parsed.rows.find(r => r.label === pLabel);
+          if (!row) { const key = normLabelKey(pLabel); row = parsed.rows.find(r => normLabelKey(r.label) === key); }
+          if (row) {
+            const dc = findDateCol(parsed.dateCols, targetDate);
+            const val = dc ? (row.valuesByCol[dc.col + (isFamily ? '_family' : '_general')] || 0) : 0;
+            total += val;
+            notes.push(`+전화(${pLabel}=${val})`);
+          }
+        }
+      }
+
+      return { value: total, note: notes.join(' '), confident };
+    }
+
+    calcLGSoho(option, hasTV, hasPhone, tvSibling, phoneSibling, targetDate) {
+      // 8/6일 이전 접수는 0803 정책, 이후는 0806 정책
+      const cutoff = new Date(Date.UTC(2026, 7, 6));
+      const sheetName = (targetDate && targetDate < cutoff) ? 'LG소호(0803)' : 'LG소호(0806)';
+      if (!this.parsedCache['__lgsoho_' + sheetName]) {
+        let aoa = null;
+        for (const f of this.feeFiles) { if (f.sheets && f.sheets[sheetName]) { aoa = f.sheets[sheetName]; break; } }
+        this.parsedCache['__lgsoho_' + sheetName] = aoa ? parseLGSohoSheet(aoa) : null;
+      }
+      const rows = this.parsedCache['__lgsoho_' + sheetName];
+      if (!rows) return { value: 0, note: 'LG소호 시트 없음', confident: false };
+
+      const speed = extractSpeed(option);
+      let notes = [`정책(${sheetName.includes('0806') ? '08/06' : '08/03'})`];
+      let confident = true;
+
+      let bundleType = null;
+      if (speed === '100M' || speed === '200M') bundleType = '100M 번들';
+      else if (speed === '500M') bundleType = '500M 번들';
+      else if (speed === '1G') { bundleType = '500M 번들'; confident = false; notes.push('1G는 500M기준 임시대체(확인필요)'); }
+      else { confident = false; notes.push('속도인식실패'); }
+
+      let value = 0;
+
+      // sangpum/yuhyung 같은 구조 필드도 라벨과 마찬가지로 띄어쓰기/대소문자 차이만 있으면
+      // 정확매칭에 실패할 수 있어, 실패 시 정규화 비교로 한 번 더 찾는다.
+      function eqField(a, b) { return a === b || normLabelKey(a) === normLabelKey(b); }
+
+      if (!hasTV && !hasPhone) {
+        const label = (speed === '100M' || speed === '200M') ? '100M/200M' : speed;
+        const row = rows.find(r => eqField(r.sangpum, '단독') && normText(r.gyulhap) === normText('인터넷') && normText(r.plan) === normText(label));
+        if (row) { value = row.feeWon; notes.push(`단독(${row.plan}=${value})`); }
+        else { confident = false; notes.push('단독 매칭실패'); }
+      } else if (hasTV && !hasPhone) {
+        const row = rows.find(r => eqField(r.yuhyung, bundleType) && eqField(r.sangpum, 'TV DPS'));
+        if (row) { value = row.feeWon; notes.push(`TVDPS(${row.plan}=${value})`); }
+        else { confident = false; notes.push('TV DPS 매칭실패'); }
+      } else {
+        let phoneQuality = null;
+        const popt = phoneSibling ? normText(phoneSibling['상품옵션']) : '';
+        if (popt.includes('AI')) phoneQuality = '전화AI';
+        else if (popt.includes('일반')) phoneQuality = '일반형';
+        if (!phoneQuality) { confident = false; notes.push('전화옵션 인식실패'); }
+
+        const structType = hasTV ? 'TPS' : '070DPS';
+        const candidates = rows.filter(r => eqField(r.yuhyung, bundleType) && eqField(r.sangpum, structType));
+        let row = null;
+        if (phoneQuality) {
+          row = candidates.find(r => normText(r.plan).includes(normText(phoneQuality).replace('AI', 'AI')) ||
+            (phoneQuality === '전화AI' && normText(r.plan).includes('전화AI')) ||
+            (phoneQuality === '일반형' && normText(r.plan).includes('일반형')));
+        }
+        if (row) { value = row.feeWon; notes.push(`${structType}(${row.plan}=${value})`); }
+        else { confident = false; notes.push(`${structType} 매칭실패`); }
+      }
+
+      return { value, note: notes.join(' '), confident };
+    }
+
+    calcKTSky(option, hasTV, tvSibling, targetDate, custName) {
+      const parsed = this.getParsed('KT 스카이');
+      if (!parsed) return { value: 0, note: 'KT스카이 시트 없음', confident: false };
+      const speed = extractSpeed(option);
+      let notes = [], total = 0, confident = true;
+      let matchedLabel = null;
+
+      if (hasTV && tvSibling) {
+        let tvOpt = normText(tvSibling['상품옵션']);
+        let qTok = null;
+        if (tvOpt.includes('베이직')) qTok = '베이직';
+        else if (tvOpt.includes('플러스')) qTok = '플러스';
+        else if (tvOpt.includes('포인트')) qTok = '포인트';
+        else if (tvOpt.includes('초이스')) qTok = '초이스';
+        else if (tvOpt.includes('ALL')) qTok = 'ALL';
+
+        if (!speed || !qTok) { confident = false; notes.push('스카이 속도/화질 인식실패'); }
+        else {
+          // 상품옵션에 "30%"가 포함되면 홈결합30% 테이블(29~38행)에서 찾는다
+          const isDiscount30row = normText(option).includes('30%') || tvOpt.includes('30%');
+          const searchTokens = isDiscount30row ? [speed, qTok, '홈결합30%'] : [speed, qTok];
+          const row = findRowByLabelContains(parsed, searchTokens);
+          if (row) {
+            const dc = findDateCol(parsed.dateCols, targetDate);
+            const val = dc ? row.valuesByCol[dc.col] || 0 : 0;
+            total += val; notes.push(`결합(${row.label}=${val})`);
+            matchedLabel = row.label;
+          } else { confident = false; notes.push('스카이 결합 매칭실패' + (isDiscount30row ? '(홈결합30%)' : '')); }
+        }
+      } else {
+        if (!speed) { confident = false; notes.push('속도인식실패'); }
+        else {
+          const label = speed + ' 인터넷';
+          const v = getValue(parsed, label, targetDate);
+          total += v.value; notes.push(`단독(${label}=${v.value})`);
+          if (!v.found) confident = false;
+          matchedLabel = label;
+        }
+      }
+
+      // 고객명에 'KT'가 포함되면(KT 재가입) 해당 상품행의 "KT재가입" 차감액을 반영
+      if (matchedLabel && String(custName || '').includes('KT')) {
+        const rejoinVal = this.getKTSkyOffsetValue(matchedLabel, targetDate, 3);
+        if (typeof rejoinVal === 'number' && rejoinVal !== 0) {
+          total += rejoinVal;
+          notes.push(`+KT재가입(${rejoinVal})`);
+        }
+      }
+
+      let stbAddon = 0;
+      if (isOSSCustomer(custName)) {
+        // 상품옵션에 "30%"가 들어있으면 할인형 OSS(20,000), 아니면 일반 OSS(50,000)
+        const isDiscount30 = normText(option).includes('30%') || (tvSibling && normText(tvSibling['상품옵션']).includes('30%'));
+        const label = isDiscount30 ? 'OSS  할인형 30%' : 'OSS  KT HCN불가';
+        // 이 두 행은 "합산 수수료" 칸이 비어있고 "본사사은품" 칸에 값이 들어있어 별도 오프셋으로 조회
+        const ossVal = this.getKTSkyOffsetValue(label, targetDate, 0);
+        stbAddon = ossVal;
+        notes.push(`(OSS ${ossVal}원[${isDiscount30 ? '할인형30%' : '일반'}]은 셋탑박스란에 별도입력)`);
+      }
+      return { value: total, note: notes.join(' '), confident, stbAddon };
+    }
+
+    // KT 스카이 시트에서 표준 오프셋(수수료칸)이 아닌 다른 칸(본사사은품=0, KT재가입=3 등)의 값을 조회
+    getKTSkyOffsetValue(label, targetDate, offset) {
+      const cacheKey = '__ktsky_offset' + offset;
+      if (this.parsedCache[cacheKey] === undefined) {
+        const merged = { dateCols: [], rows: [] };
+        let any = false;
+        this.feeFiles.forEach((f, fi) => {
+          const aoa = f.sheets && f.sheets['KT 스카이'];
+          if (!aoa) return;
+          const parsed = parseGenericFeeSheet(aoa, { dateRowIdx: 1, valueColOffset: offset, dataStartRow: 4, refYear: this.refYear, categoryCol: null, labelCol: 0, keyPrefix: 'off' + offset + '_' + fi + '_' });
+          any = true;
+          merged.dateCols.push(...parsed.dateCols);
+          parsed.rows.forEach(r => {
+            let existing = merged.rows.find(m => m.label === r.label);
+            if (!existing) { existing = { label: r.label, valuesByCol: {} }; merged.rows.push(existing); }
+            Object.assign(existing.valuesByCol, r.valuesByCol);
+          });
+        });
+        merged.dateCols.sort((a, b) => a.date - b.date);
+        this.parsedCache[cacheKey] = any ? merged : null;
+      }
+      const alt = this.parsedCache[cacheKey];
+      if (!alt) return 0;
+      return getValue(alt, label, targetDate).value;
+    }
+
+    // KT_SKY_TV가 같은 가입서비스에 중복(2줄 이상)으로 들어있을 때: 메인(최고가)=0, 나머지=화질별 추가단말
+    calcKTSkyTVRow(targetRow, group, targetDate) {
+      const tvRows = group.filter(g => isTVProduct(g['상품명']));
+      if (tvRows.length <= 1) {
+        return { value: 0, note: 'TV행(합산은 인터넷행)', confident: true };
+      }
+      const internetSibling = group.find(g => isInternetProduct(g['상품명']));
+      if (!internetSibling) {
+        return { value: 0, note: 'TV행(중복이나 인터넷 형제행 없음, 확인필요)', confident: false };
+      }
+      const parsed = this.getParsed('KT 스카이');
+      if (!parsed) return { value: 0, note: 'KT스카이 시트 없음', confident: false };
+      const speed = extractSpeed(internetSibling['상품옵션']);
+
+      function qTokOf(tvOptText) {
+        const t = normText(tvOptText);
+        if (t.includes('베이직')) return '베이직';
+        if (t.includes('플러스')) return '플러스';
+        if (t.includes('포인트')) return '포인트';
+        if (t.includes('초이스')) return '초이스';
+        if (t.includes('ALL')) return 'ALL';
+        return null;
+      }
+      if (!speed) return { value: 0, note: 'TV행(속도인식실패, 확인필요)', confident: false };
+
+      const dc = findDateCol(parsed.dateCols, targetDate);
+      const candidates = tvRows.map(tv => {
+        const qTok = qTokOf(tv['상품옵션']);
+        if (!qTok) return { tv, qTok: null, val: -1 };
+        const row = findRowByLabelContains(parsed, [speed, qTok]);
+        const val = row && dc ? (row.valuesByCol[dc.col] || 0) : -1;
+        return { tv, qTok, val };
+      });
+      const valid = candidates.filter(c => c.val >= 0);
+      if (!valid.length) return { value: 0, note: 'TV행(중복, 매칭실패, 확인필요)', confident: false };
+
+      const main = valid.reduce((a, b) => (b.val > a.val ? b : a), valid[0]);
+      const isMain = main.tv.__srcRow !== undefined && targetRow.__srcRow !== undefined
+        ? main.tv.__srcRow === targetRow.__srcRow
+        : main.tv === targetRow;
+
+      if (isMain) {
+        return { value: 0, note: `TV행(메인="${targetRow['상품옵션']}", 합산은 인터넷행)`, confident: true };
+      }
+      const myQTok = qTokOf(targetRow['상품옵션']);
+      let extraLabel = null;
+      if (myQTok === '베이직') extraLabel = '베이직';
+      else if (myQTok === '플러스') extraLabel = '플러스';
+      else if (myQTok === 'ALL') extraLabel = 'ALL 추가단말';
+      else if (myQTok === '포인트') extraLabel = '포인트 추가단말';
+      else if (myQTok === '초이스') extraLabel = '초이스 추가단말';
+      if (!extraLabel) return { value: 0, note: 'TV행(추가, 화질인식실패, 확인필요)', confident: false };
+      const extraRow = getValue(parsed, extraLabel, targetDate);
+      return {
+        value: extraRow.value,
+        note: `TV행(추가단말="${targetRow['상품옵션']}"=${extraRow.value}, 메인은 "${main.tv['상품옵션']}")`,
+        confident: extraRow.found
+      };
+    }
+  }
+
+  const api = {
+    FeeEngine, parseCellDate, extractSpeed, normText, toNum,
+    detectCarrier, isTVProduct, isInternetProduct, isPhoneProduct,
+    CARRIER_SHEET_MAP
+  };
+
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = api;
+  } else {
+    root.FeeEngineLib = api;
+  }
+
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+
+<script>
+// ============================================================
+// 앱 로직
+// ============================================================
+const { FeeEngine, detectCarrier, parseCellDate } = window.FeeEngineLib;
+
+let feeFiles = null;       // [{ tag, sheets: {시트명: aoa} }, ...]
+let custAOA = null;        // 원본 raw array-of-arrays
+let custHeaders = null;
+let colIdx = {};
+let computedRows = [];     // 계산 결과 (원본 row index 포함)
+let refYear = 2026;
+let stbFirstColIdx = -1, stbLastColIdx = -1; // "셋탑박스" 헤더가 중복일 때 첫번째(P열)/마지막(예:AJ열) 인덱스
+
+const feeFileInput = document.getElementById('feeFile');
+const custFileInput = document.getElementById('custFile');
+const feeStatus = document.getElementById('feeStatus');
+const custStatus = document.getElementById('custStatus');
+const calcBtn = document.getElementById('calcBtn');
+const resultPanel = document.getElementById('resultPanel');
+const resultBody = document.getElementById('resultBody');
+const statsRow = document.getElementById('statsRow');
+const filterMode = document.getElementById('filterMode');
+const searchBox = document.getElementById('searchBox');
+const downloadBtn = document.getElementById('downloadBtn');
+
+function readFileBytes(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(new Uint8Array(e.target.result));
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// HTML <table>을 AOA(배열의 배열)로 변환 (colspan/rowspan 처리)
+function htmlTableToAOA(table) {
+  const trs = Array.from(table.querySelectorAll('tr'));
+  const grid = [];
+  trs.forEach((tr, rIdx) => {
+    grid[rIdx] = grid[rIdx] || [];
+    let colPointer = 0;
+    const cells = Array.from(tr.children).filter(el => el.tagName === 'TD' || el.tagName === 'TH');
+    cells.forEach(cell => {
+      while (grid[rIdx][colPointer] !== undefined) colPointer++;
+      const colspan = parseInt(cell.getAttribute('colspan') || '1', 10) || 1;
+      const rowspan = parseInt(cell.getAttribute('rowspan') || '1', 10) || 1;
+      let text = cell.textContent.replace(/\u00a0/g, ' ').trim();
+      if (text === '') text = null;
+      for (let rs = 0; rs < rowspan; rs++) {
+        const targetRow = rIdx + rs;
+        grid[targetRow] = grid[targetRow] || [];
+        for (let cs = 0; cs < colspan; cs++) {
+          grid[targetRow][colPointer + cs] = text;
+        }
+      }
+      colPointer += colspan;
+    });
+  });
+  const maxCols = grid.reduce((m, r) => Math.max(m, r.length), 0);
+  return grid.map(r => {
+    const out = [];
+    for (let c = 0; c < maxCols; c++) out[c] = r[c] !== undefined ? r[c] : null;
+    return out;
+  });
+}
+
+// 파일을 AOA(첫 시트만) 로 읽기. 진짜 xlsx/xls 바이너리와, 엑셀 "웹페이지로 저장"(HTML) 둘 다 지원.
+async function readSingleSheetAOA(file) {
+  const bytes = await readFileBytes(file);
+  const isZip = bytes[0] === 0x50 && bytes[1] === 0x4B; // xlsx
+  const isOLE = bytes[0] === 0xD0 && bytes[1] === 0xCF && bytes[2] === 0x11 && bytes[3] === 0xE0; // 구버전 xls
+  if (isZip || isOLE) {
+    const wb = XLSX.read(bytes, { type: 'array', cellDates: true, codepage: 949 });
+    return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: null });
+  }
+  // HTML로 저장된 xls (EUC-KR 인코딩) 처리
+  let text;
+  try { text = new TextDecoder('euc-kr').decode(bytes); }
+  catch (e) { text = new TextDecoder('utf-8').decode(bytes); }
+  const doc = new DOMParser().parseFromString(text, 'text/html');
+  const table = doc.querySelector('table');
+  if (!table) throw new Error('표를 찾을 수 없습니다 (지원하지 않는 파일 형식)');
+  return htmlTableToAOA(table);
+}
+
+// 수수료 파일(여러 시트, xlsx)을 { 시트명: AOA } 로 읽기
+async function readMultiSheetAOA(file) {
+  const bytes = await readFileBytes(file);
+  const isZip = bytes[0] === 0x50 && bytes[1] === 0x4B;
+  const isOLE = bytes[0] === 0xD0 && bytes[1] === 0xCF && bytes[2] === 0x11 && bytes[3] === 0xE0;
+  if (isZip || isOLE) {
+    const wb = XLSX.read(bytes, { type: 'array', cellDates: true, codepage: 949 });
+    const sheets = {};
+    wb.SheetNames.forEach(name => {
+      sheets[name] = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: null });
+    });
+    return { sheets, sheetNames: wb.SheetNames };
+  }
+  const aoa = await readSingleSheetAOA(file);
+  return { sheets: { 'Sheet1': aoa }, sheetNames: ['Sheet1'] };
+}
+
+function checkReady() {
+  calcBtn.disabled = !(feeFiles && feeFiles.length && custAOA);
+}
+
+feeFileInput.addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+  feeStatus.textContent = '읽는 중...'; feeStatus.className = 'filestatus';
+  try {
+    feeFiles = [];
+    for (let i = 0; i < files.length; i++) {
+      const { sheets, sheetNames } = await readMultiSheetAOA(files[i]);
+      feeFiles.push({ tag: 'f' + i, name: files[i].name, sheets, sheetNames });
+    }
+    const fileList = feeFiles.map(f => `${f.name}(시트${f.sheetNames.length}개)`).join(', ');
+    feeStatus.textContent = `✓ ${feeFiles.length}개 파일 로드됨: ${fileList}`;
+    feeStatus.className = 'filestatus ok';
+  } catch (err) {
+    feeStatus.textContent = '읽기 실패: ' + err.message;
+    feeFiles = null;
+  }
+  checkReady();
+});
+
+custFileInput.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  custStatus.textContent = '읽는 중...'; custStatus.className = 'filestatus';
+  try {
+    custAOA = await readSingleSheetAOA(file);
+    custHeaders = custAOA[0];
+    colIdx = {};
+    custHeaders.forEach((h, i) => { if (h) colIdx[String(h).trim()] = i; }); // 동일 헤더명이 여러개면 마지막 occurrence로 덮어써짐
+    // "셋탑박스"가 헤더에 두 번 나오는 경우: 첫 번째(P열)=출력용, 마지막(예: AJ열)=조건판별용
+    stbFirstColIdx = custHeaders.findIndex(h => h && String(h).trim() === '셋탑박스');
+    stbLastColIdx = colIdx['셋탑박스'] !== undefined ? colIdx['셋탑박스'] : -1;
+    const dataCount = custAOA.length - 2;
+    custStatus.textContent = `✓ ${file.name} (${dataCount}건 로드됨)`;
+    custStatus.className = 'filestatus ok';
+  } catch (err) {
+    custStatus.textContent = '읽기 실패: ' + err.message;
+    custAOA = null;
+  }
+  checkReady();
+});
+
+function normalizeReceiptDate(v) {
+  // 접수일 컬럼은 "2026-08-28" 또는 "2026-09-04 17:40" (시간 포함) 형태의 문자열이거나 Date
+  if (!v) return null;
+  if (v instanceof Date) {
+    const h = v.getHours(), mi = v.getMinutes();
+    // 시:분이 00:00이면 시간정보 없는 것으로 보고 그날 23:59(끝)로 처리, 아니면 실제 시각 사용
+    if (h === 0 && mi === 0) return new Date(Date.UTC(v.getFullYear(), v.getMonth(), v.getDate(), 23, 59));
+    return new Date(Date.UTC(v.getFullYear(), v.getMonth(), v.getDate(), h, mi));
+  }
+  const s = String(v).trim();
+  let m = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?/);
+  if (m) {
+    if (m[4] !== undefined) {
+      // 시간정보가 있으면 실제 접수 시각으로 매칭
+      return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]));
+    }
+    // 시간정보가 없으면 그날 23:59(끝)로 간주 (기존 방식과 동일한 안전한 fallback)
+    return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 23, 59));
+  }
+  return parseCellDate(v, refYear);
+}
+
+calcBtn.addEventListener('click', () => {
+  const engine = new FeeEngine(feeFiles, refYear);
+
+  const dataRows = custAOA.slice(2); // 행1=헤더, 행2=서브헤더
+
+  // 그룹핑: 가입서비스 번호+고객명(기본) 기준 + 고객명/접수일 기준, 두 가지를 모두 합쳐서 형제행을 찾음
+  // (같은 고객의 TV/인터넷 행 중 하나만 가입서비스 번호가 비어있는 경우도 있어서, 한쪽만으론 못 잡음)
+  // 가입서비스 번호만으로 묶으면, 서로 다른 고객이 같은 번호를 실수로 공유하는 경우 잘못 묶일 수 있어
+  // 반드시 (번호 + 정규화된 고객명 기본이름)을 함께 키로 사용한다. (normName은 아래쪽에 정의되어 있지만 함수선언이라 호이스팅됨)
+  const svcGroups = {};
+  const nameDateGroups = {};
+  dataRows.forEach(row => {
+    const svc = row[colIdx['가입서비스']];
+    const baseName = normName(row[colIdx['고객명']]);
+    if (svc !== null && svc !== undefined && String(svc).trim() !== '') {
+      const k = 'svc_' + svc + '|' + baseName;
+      (svcGroups[k] = svcGroups[k] || []).push(row);
+    }
+    const name = row[colIdx['고객명']];
+    const receipt = row[colIdx['접수일']];
+    if (name !== null && name !== undefined && receipt !== null && receipt !== undefined) {
+      const k = 'nd_' + name + '|' + receipt;
+      (nameDateGroups[k] = nameDateGroups[k] || []).push(row);
+    }
+  });
+
+  function getGroupFor(row) {
+    const seen = new Set();
+    const result = [];
+    function addAll(arr) {
+      (arr || []).forEach(r => { if (!seen.has(r)) { seen.add(r); result.push(r); } });
+    }
+    const svc = row[colIdx['가입서비스']];
+    const baseName = normName(row[colIdx['고객명']]);
+    if (svc !== null && svc !== undefined && String(svc).trim() !== '') {
+      addAll(svcGroups['svc_' + svc + '|' + baseName]);
+    }
+    const name = row[colIdx['고객명']];
+    const receipt = row[colIdx['접수일']];
+    if (name !== null && name !== undefined && receipt !== null && receipt !== undefined) {
+      addAll(nameDateGroups['nd_' + name + '|' + receipt]);
+    }
+    if (result.length === 0) result.push(row); // 아무 그룹도 못 찾으면 최소한 자기 자신
+    return result;
+  }
+
+  function rowToObj(row) {
+    const obj = {};
+    Object.keys(colIdx).forEach(h => { obj[h] = row[colIdx[h]]; });
+    obj.__srcRow = row; // 같은 원본 행인지 식별하기 위한 참조 (KT 중복 TV행 메인판별용)
+    return obj;
+  }
+
+  computedRows = [];
+
+  dataRows.forEach((row, idx) => {
+    const status = row[colIdx['상태']];
+    if (status !== '개통완료') return;
+    const product = row[colIdx['상품명']];
+    if (!product) return;
+
+    const receiptDate = normalizeReceiptDate(row[colIdx['접수일']]);
+
+    const carrierInfo = detectCarrier(product);
+    const group = getGroupFor(row).map(rowToObj);
+    const targetRowObj = rowToObj(row);
+
+    // 이미 약정금액이 입력되어 있으면 그대로 두고, 참고용으로만 자동계산값을 비교 표시
+    const rawExisting = row[colIdx['약정금액']];
+    const existingNum = rawExisting === null || rawExisting === undefined || rawExisting === ''
+      ? 0 : parseFloat(String(rawExisting).replace(/,/g, '')) || 0;
+    const isPrefilled = existingNum !== 0;
+
+    let result;
+    if (!carrierInfo) {
+      result = { value: 0, note: '통신사 미매칭(수동확인)', confident: false };
+    } else {
+      result = engine.compute(carrierInfo, targetRowObj, group, receiptDate);
+    }
+
+    let finalValue, note, confident, prefilled;
+    if (isPrefilled) {
+      finalValue = existingNum;
+      note = `기존값 유지 (자동계산 참고값: ${Math.round(result.value).toLocaleString()}원) — ${result.note}`;
+      confident = true;
+      prefilled = true;
+    } else {
+      finalValue = Math.round(result.value);
+      note = result.note;
+      confident = result.confident;
+      prefilled = false;
+    }
+
+    // AJ열("셋탑박스" 두번째 헤더)이 '기가지니A'이면 P열("셋탑박스" 첫번째 헤더)에 -27,273원
+    // + SKB_OSS 고객이면 엔진이 계산한 OSS 수수료(stbAddon)도 P열에 별도로 더해서 입력 (약정금액에는 미포함)
+    let stbOverride = 0;
+    const stbNotes = [];
+    if (stbLastColIdx >= 0 && String(row[stbLastColIdx] || '').trim() === '기가지니A') {
+      stbOverride += -27273;
+      stbNotes.push('기가지니A -27,273원');
+    }
+    if (!isPrefilled && result.stbAddon) {
+      stbOverride += Math.round(result.stbAddon);
+      stbNotes.push(`OSS +${Math.round(result.stbAddon).toLocaleString()}원`);
+    }
+    const hasStbOverride = stbOverride !== 0;
+
+    computedRows.push({
+      origIdx: idx + 2, // custAOA 기준 실제 행 인덱스 (0=헤더,1=서브헤더 → 데이터 idx+2)
+      고객명: row[colIdx['고객명']],
+      협력점: row[colIdx['협력점']],
+      상품명: product,
+      상품옵션: row[colIdx['상품옵션']],
+      셋트: row[colIdx['셋트']],
+      접수일: row[colIdx['접수일']],
+      상태: status,
+      계산값: finalValue,
+      원계산값: finalValue,
+      신뢰: confident,
+      사전입력됨: prefilled,
+      비고: note + (hasStbOverride ? ` [셋탑박스란: ${stbNotes.join(', ')}]` : ''),
+      수정됨: false,
+      셋탑박스값: hasStbOverride ? stbOverride : null
+    });
+  });
+
+  resultPanel.style.display = 'block';
+  renderStats();
+  renderTable();
+  resultPanel.scrollIntoView({ behavior: 'smooth' });
+});
+
+function renderStats() {
+  const total = computedRows.length;
+  const prefilled = computedRows.filter(r => r.사전입력됨).length;
+  const warn = computedRows.filter(r => !r.신뢰 && !r.사전입력됨).length;
+  const ok = total - warn - prefilled;
+  const sum = computedRows.reduce((s, r) => s + r.계산값, 0);
+  statsRow.innerHTML = `
+    <div class="stat"><div class="n">${total.toLocaleString()}</div><div class="l">전체 대상</div></div>
+    <div class="stat ok"><div class="n">${ok.toLocaleString()}</div><div class="l">자동계산 완료</div></div>
+    <div class="stat warn"><div class="n">${warn.toLocaleString()}</div><div class="l">확인 필요</div></div>
+    <div class="stat"><div class="n">${prefilled.toLocaleString()}</div><div class="l">기존값 유지</div></div>
+    <div class="stat"><div class="n">${sum.toLocaleString()}원</div><div class="l">합계</div></div>
+  `;
+}
+
+function renderTable() {
+  const mode = filterMode.value;
+  const q = searchBox.value.trim().toLowerCase();
+
+  let rows = computedRows;
+  if (mode === 'warn') rows = rows.filter(r => !r.신뢰 && !r.사전입력됨);
+  if (mode === 'edited') rows = rows.filter(r => r.수정됨);
+  if (mode === 'prefilled') rows = rows.filter(r => r.사전입력됨);
+  if (q) rows = rows.filter(r => (String(r.고객명 || '') + String(r.상품명 || '')).toLowerCase().includes(q));
+
+  if (rows.length === 0) {
+    resultBody.innerHTML = `<tr><td colspan="9" class="empty">표시할 항목이 없습니다.</td></tr>`;
+    return;
+  }
+
+  resultBody.innerHTML = rows.map(r => {
+    const idx = computedRows.indexOf(r);
+    const rowClass = r.사전입력됨 ? 'prefilled' : (r.신뢰 ? '' : 'warn');
+    const tag = r.사전입력됨 ? '<span class="tag prefilled">기존값유지</span>' : (r.신뢰 ? '<span class="tag ok">자동계산</span>' : '<span class="tag warn">확인필요</span>');
+    return `<tr class="${rowClass}">
+      <td>${esc(r.고객명)}</td>
+      <td>${esc(r.협력점)}</td>
+      <td>${esc(r.상품명)}</td>
+      <td>${esc(r.상품옵션)}</td>
+      <td>${esc(r.셋트)}</td>
+      <td>${esc(fmtDate(r.접수일))}</td>
+      <td>${tag}</td>
+      <td><input class="val-input ${r.수정됨 ? 'edited' : ''}" type="number" step="1" data-idx="${idx}" value="${r.계산값}"></td>
+      <td><span class="note">${esc(r.비고)}</span></td>
+    </tr>`;
+  }).join('');
+
+  resultBody.querySelectorAll('.val-input').forEach(inp => {
+    inp.addEventListener('change', (e) => {
+      const idx = +e.target.dataset.idx;
+      const newVal = Math.round(parseFloat(e.target.value) || 0);
+      computedRows[idx].계산값 = newVal;
+      computedRows[idx].수정됨 = (newVal !== computedRows[idx].원계산값);
+      e.target.classList.toggle('edited', computedRows[idx].수정됨);
+      renderStats();
+    });
+  });
+}
+
+function esc(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+function fmtDate(v) {
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  return v;
+}
+
+filterMode.addEventListener('change', renderTable);
+searchBox.addEventListener('input', renderTable);
+
+downloadBtn.addEventListener('click', () => {
+  // 원본 custAOA 복제 후 O열(약정금액), P열(셋탑박스-기가지니A 케이스) 업데이트
+  const outAOA = custAOA.map(r => r.slice());
+  const oColIdx = colIdx['약정금액'];
+  computedRows.forEach(r => {
+    outAOA[r.origIdx][oColIdx] = r.계산값;
+    if (r.셋탑박스값 !== null && r.셋탑박스값 !== undefined && stbFirstColIdx >= 0) {
+      outAOA[r.origIdx][stbFirstColIdx] = r.셋탑박스값;
+    }
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(outAOA);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  XLSX.writeFile(wb, `약정금액입력_${today}.xlsx`);
+});
+
+// ============================================================
+// 3단계: 상부수수료 매칭 (파일마다 다른 양식 지원)
+// ============================================================
+let resultAOA = null, resultHeaders = null, resultColIdx = {};
+let resultStbFirstIdx = -1, resultBugaFirstIdx = -1; // "셋탑박스"/"부가서비스" 헤더가 중복일 때 첫번째(P/Q열) 인덱스
+let supFiles = []; // [{ name, sheetsData:{시트명:aoa}, sheetNames:[], headerRowIdx, headers }]
+let supComputedRows = [];
+
+const resultFileInput = document.getElementById('resultFile');
+const supFileInput = document.getElementById('supFile');
+const resultStatus = document.getElementById('resultStatus');
+const supStatus = document.getElementById('supStatus');
+const supColumnMapper = document.getElementById('supColumnMapper');
+const supColumnMapperFiles = document.getElementById('supColumnMapperFiles');
+const supMatchBtn = document.getElementById('supMatchBtn');
+const supResultArea = document.getElementById('supResultArea');
+const supStatsRow = document.getElementById('supStatsRow');
+const supResultBody = document.getElementById('supResultBody');
+const supFilterMode = document.getElementById('supFilterMode');
+const supDownloadBtn = document.getElementById('supDownloadBtn');
+const supOnlyArea = document.getElementById('supOnlyArea');
+const supOnlyBody = document.getElementById('supOnlyBody');
+const supPartnerFilter = document.getElementById('supPartnerFilter');
+const supPartnerOptions = document.getElementById('supPartnerOptions');
+const crossPartnerArea = document.getElementById('crossPartnerArea');
+const crossPartnerBody = document.getElementById('crossPartnerBody');
+
+resultFileInput.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  resultStatus.textContent = '읽는 중...'; resultStatus.className = 'filestatus';
+  try {
+    resultAOA = await readSingleSheetAOA(file);
+    resultHeaders = resultAOA[0];
+    resultColIdx = {};
+    resultHeaders.forEach((h, i) => { if (h) resultColIdx[String(h).trim()] = i; });
+    resultStbFirstIdx = resultHeaders.findIndex(h => h && String(h).trim() === '셋탑박스');
+    resultBugaFirstIdx = resultHeaders.findIndex(h => h && String(h).trim() === '부가서비스');
+    const need = ['고객명', '가입서비스', '상품명', '접수일', '상부수수료', '약정금액'];
+    const missing = need.filter(k => !(k in resultColIdx));
+    if (missing.length) throw new Error('필요한 컬럼이 없습니다: ' + missing.join(', '));
+    resultStatus.textContent = `✓ ${file.name} (${resultAOA.length - 2}건)`;
+    resultStatus.className = 'filestatus ok';
+    // 상부점(AL열) 자동완성 목록 채우기
+    if ('상부점' in resultColIdx) {
+      const partners = new Set();
+      resultAOA.slice(2).forEach(r => { const v = r[resultColIdx['상부점']]; if (v) partners.add(String(v).trim()); });
+      supPartnerOptions.innerHTML = [...partners].sort().map(p => `<option value="${esc(p)}">`).join('');
+    }
+  } catch (err) {
+    resultStatus.textContent = '읽기 실패: ' + err.message;
+    resultAOA = null;
+  }
+  maybeShowMapper();
+});
+
+function findHeaderRowIdx(aoa) {
+  for (let i = 0; i < Math.min(10, aoa.length); i++) {
+    const row = aoa[i] || [];
+    if (row.some(c => c && /고객명|고객\s*성명/.test(String(c)))) return i;
+  }
+  return -1; // "고객명" 헤더를 못 찾음 (이 시트는 표 형태가 아닐 수 있음)
+}
+
+// 한 시트 안에 "고객명"류 헤더가 여러 번 나오면(예: 메인 개통표 + 모바일/유심 별도표),
+// 행/열 위치와 상관없이 각각을 별도의 표로 자동 인식한다.
+// 표 사이 경계는 "다음 헤더가 나오기 전" 또는 "빈 행이 2개 이상 연속"으로 판단한다.
+function detectTables(aoa) {
+  const headerRows = [];
+  for (let i = 0; i < aoa.length; i++) {
+    const row = aoa[i] || [];
+    if (row.some(c => c && /고객명|고객\s*성명/.test(String(c)))) headerRows.push(i);
+  }
+  if (!headerRows.length) return [];
+  return headerRows.map((hIdx, idx) => {
+    const nextHeaderIdx = idx + 1 < headerRows.length ? headerRows[idx + 1] : aoa.length;
+    let endIdx = nextHeaderIdx;
+    let blankStreak = 0;
+    for (let r = hIdx + 1; r < nextHeaderIdx; r++) {
+      const row = aoa[r] || [];
+      const isBlank = !row.some(c => c !== null && c !== undefined && c !== '');
+      if (isBlank) { blankStreak++; if (blankStreak >= 2) { endIdx = r - blankStreak + 1; break; } }
+      else blankStreak = 0;
+    }
+    return { headerRowIdx: hIdx, dataAOA: [aoa[hIdx], ...aoa.slice(hIdx + 1, endIdx)] };
+  });
+}
+
+supFileInput.addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+  supStatus.textContent = '읽는 중...'; supStatus.className = 'filestatus';
+  try {
+    supFiles = [];
+    for (let fi = 0; fi < files.length; fi++) {
+      const { sheets, sheetNames } = await readMultiSheetAOA(files[fi]);
+      sheetNames.forEach(sheetName => {
+        const aoa = sheets[sheetName];
+        if (!aoa || !aoa.some(row => row && row.some(Boolean))) return; // 빈 시트
+        const tables = detectTables(aoa);
+        if (!tables.length) return; // "고객명"류 헤더가 아예 없는 시트(요약/표지 등)는 건너뜀
+        tables.forEach((t, ti) => {
+          const label = sheetNames.length > 1 || tables.length > 1
+            ? `${files[fi].name} [${sheetName}${tables.length > 1 ? ' 표' + (ti + 1) : ''}]`
+            : files[fi].name;
+          supFiles.push({
+            name: label,
+            sheetsData: { [sheetName]: t.dataAOA },
+            sheetNames: [sheetName],
+            headerRowIdx: 0,
+            headers: t.dataAOA[0] || []
+          });
+        });
+      });
+    }
+    const fileList = supFiles.map(f => f.name).join(', ');
+    supStatus.textContent = `✓ ${supFiles.length}개 표 인식됨: ${fileList}`;
+    supStatus.className = 'filestatus ok';
+  } catch (err) {
+    supStatus.textContent = '읽기 실패: ' + err.message;
+    supFiles = [];
+  }
+  maybeShowMapper();
+});
+
+function guessRole(header) {
+  const h = String(header || '').replace(/\s+/g, ''); // 줄바꿈/공백 제거 후 매칭 (헤더가 여러 줄인 경우 대응)
+  if (/서비스관리번호|서비스번호|관리번호|가입번호|가입서비스|서번|가번/.test(h)) return 'svcid';
+  if (/고객|성명|이름/.test(h)) return 'name';
+  if (/접수(일|날짜)/.test(h)) return 'date'; // "접수번호"는 날짜가 아니므로 제외 (접수일/접수일자 등만 인식)
+  if (/^상품명$|상품명/.test(h)) return 'product';
+  if (/상품옵션|^옵션$|상품유형|상품\(TV\)|상품TV|정산종류|정산구분|^셋트$|셋트구분/.test(h)) return 'opt';
+  // "정산수수료", "수수료금액", "합계" 같은 최종 합계 컬럼이 있으면 그것을 최우선으로 사용 (다른 금액 컬럼은 중복이므로 사용안함)
+  if (/정산수수료|정산금액|최종금액|최종수수료|합계금액|수수료금액|총수수료|^합계$/.test(h)) return 'plus';
+  return 'none';
+}
+function guessRoleFallback(header) {
+  const h = String(header || '').replace(/\s+/g, '');
+  if (h === '수수료' || /^수수료$/.test(h)) return 'plus';
+  if (/차감|공제/.test(h)) return 'minus';
+  if (/추가.*정책|정책.*추가|보너스|장려금/.test(h)) return 'plus';
+  return 'none';
+}
+
+function maybeShowMapper() {
+  if (!supFiles.length) { supColumnMapper.style.display = 'none'; return; }
+
+  // 헤더 전체를 보고 역할을 보정한다: "모바일고객명"/"모바일가번"처럼 더 구체적인 컬럼이 있으면
+  // "인터넷고객명"/"인터넷가번" 같은 일반 컬럼은 매칭키(name/svcid)에서 내려서 혼동을 막는다.
+  function refineGuesses(headers) {
+    const guesses = headers.map(h => guessRole(h));
+    const hasMobileName = headers.some(h => /모바일.*(고객|성명)|무선.*(고객|성명)/.test(String(h || '').replace(/\s+/g, '')));
+    const hasMobileSvc = headers.some(h => /모바일.*(가번|번호)|무선.*(가번|번호)/.test(String(h || '').replace(/\s+/g, '')));
+    headers.forEach((h, i) => {
+      const hh = String(h || '').replace(/\s+/g, '');
+      const isMobileName = /모바일.*(고객|성명)|무선.*(고객|성명)/.test(hh);
+      const isMobileSvc = /모바일.*(가번|번호)|무선.*(가번|번호)/.test(hh);
+      if (guesses[i] === 'name' && hasMobileName && !isMobileName) guesses[i] = 'none';
+      if (guesses[i] === 'svcid' && hasMobileSvc && !isMobileSvc) guesses[i] = 'none';
+    });
+    return guesses;
+  }
+
+  supColumnMapperFiles.innerHTML = supFiles.map((f, fi) => {
+    let sampleRow = [];
+    for (const name of f.sheetNames) {
+      const aoa = f.sheetsData[name];
+      if (!aoa) continue;
+      const found = aoa.slice(f.headerRowIdx + 1).find(r => r && r.some(v => v !== null && v !== ''));
+      if (found) { sampleRow = found; break; }
+    }
+    const hasFinalCol = f.headers.some(h => guessRole(h) === 'plus');
+    const refined = refineGuesses(f.headers);
+    const rowsHtml = f.headers.map((h, i) => {
+      if (h === null || h === undefined || h === '') return '';
+      let guessed = refined[i];
+      if (guessed === 'none' && !hasFinalCol) guessed = guessRoleFallback(h);
+      const sample = sampleRow[i] !== undefined && sampleRow[i] !== null ? String(sampleRow[i]).slice(0, 30) : '';
+      return `<tr>
+        <td>${esc(h)}</td>
+        <td class="note">${esc(sample)}</td>
+        <td>
+          <select data-file="${fi}" data-col="${i}" class="sup-role">
+            <option value="none" ${guessed === 'none' ? 'selected' : ''}>사용안함</option>
+            <option value="name" ${guessed === 'name' ? 'selected' : ''}>고객명 (매칭키)</option>
+            <option value="svcid" ${guessed === 'svcid' ? 'selected' : ''}>서비스번호(가입서비스, 매칭키·최우선)</option>
+            <option value="date" ${guessed === 'date' ? 'selected' : ''}>접수일 (매칭키, 선택)</option>
+            <option value="plus" ${guessed === 'plus' ? 'selected' : ''}>금액(+) 합산</option>
+            <option value="minus" ${guessed === 'minus' ? 'selected' : ''}>금액(-) 차감</option>
+            <option value="product" ${guessed === 'product' ? 'selected' : ''}>상품명(유심/USIM 구분용)</option>
+            <option value="opt" ${guessed === 'opt' ? 'selected' : ''}>상품옵션(추가단말/전화 구분용)</option>
+          </select>
+        </td>
+      </tr>`;
+    }).join('');
+    return `<div style="margin-bottom:18px; border:1px solid var(--line); border-radius:8px; padding:12px;">
+      <div style="font-weight:600; font-size:13px; margin-bottom:8px;">📄 ${esc(f.name)}</div>
+      <div class="tablewrap" style="max-height:220px;">
+        <table><thead><tr><th>컬럼명</th><th>샘플값</th><th>역할</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+      </div>
+    </div>`;
+  }).join('');
+  supColumnMapper.style.display = 'block';
+}
+
+function normName(name) {
+  if (!name) return '';
+  // "고객명/원스톱" "고객명/OSS" "고객명(메모)" "고객명 " 등 접미사/괄호메모/공백 제거하고 기본 이름만 추출
+  let s = String(name).trim();
+  s = s.split('/')[0]; // 슬래시 뒤 접미사 제거
+  s = s.replace(/\([^)]*\)/g, ''); // "박채연(최소리)" 같은 괄호 메모 제거
+  s = s.replace(/\s+/g, '');
+  // "신경호OSS"처럼 슬래시 없이 접미사가 바로 붙어있는 경우도 제거 (OSS/원스톱/동판 등)
+  s = s.replace(/(oss|원스톱|유심동판|동판|추셋|KT전환)+$/i, '');
+  s = s.replace(/\d+$/, ''); // "최한나1", "최한나2" 처럼 끝에 붙는 동명이인 구분숫자 제거 (이름만으로 인식되게)
+  return s;
+}
+function normDateKey(v) {
+  if (!v) return null;
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  const m = String(v).match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return `${m[1]}-${String(+m[2]).padStart(2, '0')}-${String(+m[3]).padStart(2, '0')}`;
+  return null;
+}
+
+// 서비스번호(가입서비스) 정규화 — "z!66252661383 / 02-091-6410" 처럼 전화번호 등이 같이 붙어있는
+// 경우가 있어서, 8자리 이상 연속된 숫자만 뽑아서 비교키로 사용 (순수 숫자면 그대로 통과)
+function extractSvcId(raw) {
+  if (raw === null || raw === undefined) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  const m = s.match(/\d{8,}/);
+  return m ? m[0] : s;
+}
+
+// 마스킹된 이름(예: "김*민")과 실제 이름("김주민")이 같은 사람인지 비교
+// masked의 '*' 위치는 무시하고, 나머지 글자가 정확히 같은지 + 길이가 같은지 확인
+// (실제 이름 끝의 숫자(동명이인 구분용 "2" 등)는 비교에서 제외)
+function maskedNameMatches(masked, realBase) {
+  if (!masked || !realBase) return false;
+  const m = String(masked).trim();
+  if (!m.includes('*')) return false;
+  const r = String(realBase).replace(/\d+$/, '');
+  if (m.length !== r.length) return false;
+  for (let i = 0; i < m.length; i++) {
+    if (m[i] !== '*' && m[i] !== r[i]) return false;
+  }
+  return true;
+}
+
+// 레벤슈타인 거리(편집거리) — 작을수록 텍스트가 더 비슷함. 유심 등 서비스번호로 못 묶을 때 "가장 비슷한 이름"을 찾는 용도.
+function levenshtein(a, b) {
+  a = String(a || ''); b = String(b || '');
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+// candidates 중에서 targetName과 텍스트가 가장 비슷한(편집거리가 가장 작은) 것을 하나 고른다.
+// 완전히 다른 사람까지 억지로 묶이지 않도록, 편집거리가 이름 길이 대비 너무 크면(30% 초과) 매칭하지 않는다.
+// 또한 2등과 차이가 없을 정도로 애매하면(동점) 잘못 고를 위험이 있어 매칭하지 않는다.
+function findMostSimilar(candidates, targetName) {
+  if (!targetName) return null;
+  let best = null, bestDist = Infinity, secondDist = Infinity;
+  candidates.forEach(e => {
+    if (!e.baseName) return;
+    const d = levenshtein(targetName, e.baseName);
+    if (d < bestDist) { secondDist = bestDist; bestDist = d; best = e; }
+    else if (d < secondDist) { secondDist = d; }
+  });
+  if (!best) return null;
+  const maxLen = Math.max(targetName.length, best.baseName.length);
+  const threshold = Math.max(1, Math.floor(maxLen * 0.3)); // 길이의 30%까지만 오차 허용(최소 1글자)
+  if (bestDist > threshold) return null; // 너무 다르면 매칭 포기
+  if (bestDist > 0 && bestDist === secondDist) return null; // 동점으로 애매하면 매칭 포기
+  return best;
+}
+
+// KT 상품은 VAT 나눗셈(예: /1.1) 때문에 우리쪽과 상부쪽 반올림이 1원씩 어긋나는 경우가 흔해서,
+// 1원 이내 차이는 사실상 같은 금액으로 본다
+function isKtProduct(product) { return /KT/i.test(String(product || '')); }
+function isEqualEnough(oValue, finalN, product) {
+  if (oValue === finalN) return true;
+  if (isKtProduct(product) && Math.abs(oValue - finalN) <= 1) return true;
+  return false;
+}
+
+supMatchBtn.addEventListener('click', () => {
+  if (!resultAOA || !supFiles.length) return;
+
+  const supEntries = [];
+  const bySvcId = {};    // svcId -> [entry,...]
+  const byNameDate = {}; // key: name|date -> [entry,...]
+  const byNameOnly = {}; // key: name -> [entry,...]
+  let anyKeyColMissing = [];
+
+  function indexEntry(entry) {
+    supEntries.push(entry);
+    (entry.svcIds || (entry.svcId ? [entry.svcId] : [])).forEach(id => {
+      (bySvcId[id] = bySvcId[id] || []).push(entry);
+    });
+    if (entry.baseName && entry.dateKey) { const k = entry.baseName + '|' + entry.dateKey; (byNameDate[k] = byNameDate[k] || []).push(entry); }
+    if (entry.baseName) (byNameOnly[entry.baseName] = byNameOnly[entry.baseName] || []).push(entry);
+  }
+
+  supFiles.forEach((f, fi) => {
+    const roles = {};
+    supColumnMapperFiles.querySelectorAll(`.sup-role[data-file="${fi}"]`).forEach(sel => {
+      roles[+sel.dataset.col] = sel.value;
+    });
+    const nameCol = Object.keys(roles).find(c => roles[c] === 'name');
+    const svcCol = Object.keys(roles).find(c => roles[c] === 'svcid');
+    const dateCol = Object.keys(roles).find(c => roles[c] === 'date');
+    const productCol = Object.keys(roles).find(c => roles[c] === 'product');
+    const optCol = Object.keys(roles).find(c => roles[c] === 'opt');
+    const plusCols = Object.keys(roles).filter(c => roles[c] === 'plus').map(Number);
+    const minusCols = Object.keys(roles).filter(c => roles[c] === 'minus').map(Number);
+
+    if (nameCol === undefined && svcCol === undefined) { anyKeyColMissing.push(f.name); return; }
+    const keyCol = nameCol !== undefined ? nameCol : svcCol; // 데이터행 판별용(이 컬럼에 값 있으면 데이터행)
+
+    const supDataRows = [];
+    f.sheetNames.forEach(sheetName => {
+      const aoa = f.sheetsData[sheetName];
+      if (!aoa || !aoa.some(row => row && row.some(Boolean))) return;
+      // 이 시트도 실제로 "고객명" 헤더가 있는 표인지 각자 확인 — "내역" 같은 요약/표지 시트는 건너뛴다
+      const thisSheetHeaderRow = findHeaderRowIdx(aoa);
+      if (thisSheetHeaderRow < 0) return;
+      aoa.slice(thisSheetHeaderRow + 1).forEach(r => {
+        if (r && r[+keyCol] !== null && r[+keyCol] !== undefined && String(r[+keyCol]).trim() !== '') {
+          supDataRows.push(r);
+        }
+      });
+    });
+
+    // 이 표(파일)의 원본 행들을 먼저 다 수집만 해둔다 (인덱싱은 나중에, main 합치기 이후)
+    const rawEntries = [];
+    supDataRows.forEach(r => {
+      const rawName = nameCol !== undefined ? r[+nameCol] : null;
+      const svcId = svcCol !== undefined && r[+svcCol] !== null && r[+svcCol] !== undefined ? extractSvcId(r[+svcCol]) : null;
+      const name = normName(rawName);
+      if (!name && !svcId) return;
+      let amount = 0;
+      plusCols.forEach(c => { amount += parseFloat(String(r[c] || '0').replace(/,/g, '')) || 0; });
+      minusCols.forEach(c => { amount -= parseFloat(String(r[c] || '0').replace(/,/g, '')) || 0; });
+      const dateKey = dateCol !== undefined ? normDateKey(r[+dateCol]) : null;
+      const dateRaw = dateCol !== undefined ? r[+dateCol] : null;
+
+      // 상품명/상품옵션으로 카테고리 구분: 추가단말("(추단)"), 전화("일반전화"), 유심(모바일/유심/USIM), 나머지는 일반(TV/인터넷)
+      const productText = productCol !== undefined ? String(r[+productCol] || '') : '';
+      const optText = optCol !== undefined ? String(r[+optCol] || '') : '';
+      const svcRawText = svcCol !== undefined ? String(r[+svcCol] || '') : '';
+      let category = 'main';
+      if (optText.includes('추단') || optText.includes('다셋') || optText.includes('추셋') || /2nd/i.test(optText)) category = 'extra'; // "(추단)"/"다셋"(다구간셋탑)/"추셋"(힘콤)/"2nd"(예: "2nd iptv Basic") = 추가단말
+      else if (optText.includes('일반전화')) category = 'phone';
+      else if (/모바일|유심|usim/i.test(productText) || /유심/.test(svcRawText)) category = 'usim';
+
+      rawEntries.push({ rawName, baseName: name, hasMask: rawName ? /\*/.test(String(rawName)) : false, svcId, dateKey, dateRaw, amount, sourceFile: f.name, category });
+    });
+
+    // "main"(인터넷/TV 등) 카테고리는, 같은 고객이 인터넷행+TV행으로 나뉘어 있고
+    // 서비스번호도 행마다 조금씩 다른 경우가 있어서, 같은 고객명+같은 접수일시(=같은 제출건)를 하나로 합친다.
+    // (extra/phone/usim은 이미 각자 별도 성격이라 합치지 않는다)
+    const mainRaw = rawEntries.filter(e => e.category === 'main');
+    const otherRaw = rawEntries.filter(e => e.category !== 'main');
+    const mergeMap = {};
+    mainRaw.forEach(e => {
+      const key = (e.baseName || '') + '|' + (e.dateRaw !== null && e.dateRaw !== undefined ? String(e.dateRaw) : (e.dateKey || ''));
+      if (!mergeMap[key]) {
+        mergeMap[key] = { rawName: e.rawName, baseName: e.baseName, hasMask: e.hasMask, svcIds: [], dateKey: e.dateKey, dateRaw: e.dateRaw, amount: 0, sourceFile: e.sourceFile, category: 'main', matched: false };
+      }
+      mergeMap[key].amount += e.amount;
+      if (e.svcId && !mergeMap[key].svcIds.includes(e.svcId)) mergeMap[key].svcIds.push(e.svcId);
+    });
+    Object.values(mergeMap).forEach(indexEntry);
+    otherRaw.forEach(e => indexEntry(Object.assign({ matched: false }, e)));
+  });
+
+  if (anyKeyColMissing.length) {
+    alert('다음 파일은 "고객명" 또는 "서비스번호" 컬럼을 지정하지 않아 건너뛰었습니다: ' + anyKeyColMissing.join(', '));
+  }
+  const sumOf = (entries) => entries.reduce((s, e) => s + e.amount, 0);
+  const markMatched = (entries) => entries.forEach(e => { e.matched = true; });
+
+  // 결과파일 순회하며 매칭
+  const rDataRows = resultAOA.slice(2);
+  const partnerFilterVal = supPartnerFilter.value.trim();
+  const crossPartnerRows = [];
+
+  // 하부수수료 비교용: 메인 TV/인터넷/전화는 그룹으로 합산해서 비교하되,
+  // "추가단말"행(중복TV 등에서 그 행 자체에 약정금액이 들어간 경우)은 별도로 취급한다.
+  // → 추가단말은 추가단말끼리, 전화는 전화끼리 비교해야 하므로 메인 그룹 합산에서 제외.
+  function resultGroupKeyOf(row) {
+    const svc = row[resultColIdx['가입서비스']];
+    const baseName = normName(row[resultColIdx['고객명']]);
+    // 가입서비스 번호만으로 묶으면, 서로 다른 고객이 같은 번호를 실수로 공유하는 경우(예: 박선화/최재원) 잘못 합산될 수 있어
+    // 번호+이름을 함께 키로 사용한다 (1·2단계 계산 때와 동일한 방식)
+    if (svc !== null && svc !== undefined && String(svc).trim() !== '') return 'svc_' + svc + '|' + baseName;
+    return 'fallback_' + row[resultColIdx['고객명']] + '_' + row[resultColIdx['접수일']];
+  }
+  function rowOwnO(row) { return parseFloat(String(row[resultColIdx['약정금액']] || '0').replace(/,/g, '')) || 0; }
+  function rowOwnPQ(row) {
+    const p = resultStbFirstIdx >= 0 ? (parseFloat(String(row[resultStbFirstIdx] || '0').replace(/,/g, '')) || 0) : 0;
+    const q = resultBugaFirstIdx >= 0 ? (parseFloat(String(row[resultBugaFirstIdx] || '0').replace(/,/g, '')) || 0) : 0;
+    return p + q;
+  }
+  function isExtraDeviceRow(row, product) {
+    const isTV = /_TV$/.test(product);
+    const isPhone = /_전화$/.test(product);
+    return (isTV || isPhone) && rowOwnO(row) !== 0; // 메인행은 항상 O=0, 추가단말/전화 중복행만 자기 O값을 가짐
+  }
+  const resultGroupTotal = {};
+  rDataRows.forEach(row => {
+    if (row[resultColIdx['상태']] !== '개통완료') return;
+    const product = row[resultColIdx['상품명']];
+    if (!product || isExtraDeviceRow(row, product)) return; // 추가단말/전화행은 메인 그룹 합산에서 제외
+    const key = resultGroupKeyOf(row);
+    resultGroupTotal[key] = (resultGroupTotal[key] || 0) + rowOwnO(row) + rowOwnPQ(row);
+  });
+
+  supComputedRows = [];
+
+  rDataRows.forEach((row, idx) => {
+    const status = row[resultColIdx['상태']];
+    if (status !== '개통완료') return;
+    const product = row[resultColIdx['상품명']];
+    if (!product) return;
+
+    const partnerVal = resultColIdx['상부점'] !== undefined ? row[resultColIdx['상부점']] : null;
+    const isTargetPartner = !partnerFilterVal || String(partnerVal || '').trim() === partnerFilterVal;
+
+    // TV/전화 행은 상부수수료도 0 (약정금액과 동일한 합산 규칙 — 합계는 인터넷 행에 반영)
+    const isTV = /_TV$/.test(product);
+    const isPhone = /_전화$/.test(product);
+    const skipRow = isTV || isPhone;
+
+    // 추가단말/전화 중복행(자기 자신이 약정금액을 가진 TV/전화행) — "(추단)"/"일반전화"로 구분된 상부 항목과 매칭
+    if (isExtraDeviceRow(row, product)) {
+      const ownTotal = rowOwnO(row) + rowOwnPQ(row);
+      const wantCategory = isPhone ? 'phone' : 'extra';
+      const svcIdExtra = row[resultColIdx['가입서비스']] !== null && row[resultColIdx['가입서비스']] !== undefined ? extractSvcId(row[resultColIdx['가입서비스']]) : null;
+      const baseNameExtra = normName(row[resultColIdx['고객명']]);
+      let extraMatched = null, extraNote = '';
+      const svcHitsExtra = svcIdExtra && bySvcId[svcIdExtra] ? bySvcId[svcIdExtra].filter(e => !e.matched && e.category === wantCategory) : [];
+      if (svcHitsExtra.length) {
+        extraMatched = sumOf(svcHitsExtra); extraNote = `서비스번호 매칭(${wantCategory === 'extra' ? '추가단말' : '전화'})`; markMatched(svcHitsExtra);
+      } else {
+        // 이름만으로 여러 건이 후보에 남아있으면(예: 같은 이름의 전화 중복행 2개), 한 건씩 1:1로 소비한다
+        // (한꺼번에 다 합쳐서 소비하면, 나중 행이 상대를 못 찾아 서로 다르게 표시되는 문제가 생김)
+        const nameHitsExtra = byNameOnly[baseNameExtra] ? byNameOnly[baseNameExtra].filter(e => !e.matched && e.category === wantCategory) : [];
+        if (nameHitsExtra.length) {
+          const pick = [nameHitsExtra[0]];
+          extraMatched = sumOf(pick); extraNote = `이름 매칭(${wantCategory === 'extra' ? '추가단말' : '전화'})`; markMatched(pick);
+        } else {
+          // 마스킹된 이름(예: "임*숙") 매칭 폴백 — 서비스번호/일반이름 매칭이 안 됐을 때만 시도
+          const maskedHitsExtra = supEntries.filter(e => !e.matched && e.category === wantCategory && e.hasMask && maskedNameMatches(e.rawName, baseNameExtra));
+          if (maskedHitsExtra.length) {
+            const pick = [maskedHitsExtra[0]];
+            extraMatched = sumOf(pick); extraNote = `마스킹이름 매칭(${wantCategory === 'extra' ? '추가단말' : '전화'})`; markMatched(pick);
+          }
+        }
+      }
+      const extraEq = extraMatched !== null && isEqualEnough(ownTotal, extraMatched, product);
+      supComputedRows.push({
+        origIdx: idx + 2,
+        고객명: row[resultColIdx['고객명']], 상품명: product, 접수일: row[resultColIdx['접수일']],
+        하부: ownTotal, 상부: extraMatched !== null ? Math.round(extraMatched) : 0,
+        matchStatus: extraMatched !== null ? (extraEq ? 'ok' : (ownTotal > extraMatched ? 'warn' : 'ok')) : 'unmatched',
+        anomaly: extraMatched !== null && !extraEq && ownTotal > extraMatched,
+        equalMatch: extraEq,
+        비고: extraMatched !== null ? extraNote : `추가단말/전화행 — 상부 정산서에서 매칭 실패(${wantCategory === 'extra' ? '추가단말' : '전화'} 항목 없음)`
+      });
+      return;
+    }
+
+    const isUsimProduct = /usim/i.test(product);
+
+    const custName = row[resultColIdx['고객명']];
+    const baseName = normName(custName);
+    const svcId = row[resultColIdx['가입서비스']] !== null && row[resultColIdx['가입서비스']] !== undefined ? extractSvcId(row[resultColIdx['가입서비스']]) : null;
+    const receiptDate = row[resultColIdx['접수일']];
+    const dateKey = normDateKey(receiptDate);
+    // 하부수수료 = 이 고객(가입서비스) 그룹의 "메인" 약정금액+셋탑박스+부가서비스 합산 (추가단말/전화 중복행 제외)
+    const oValue = resultGroupTotal[resultGroupKeyOf(row)] || 0;
+    const existingN = parseFloat(String(row[resultColIdx['상부수수료']] || '0').replace(/,/g, '')) || 0;
+
+    let matched = null, matchNote = '';
+    if (isUsimProduct) {
+      // 유심: 서비스번호가 우리쪽엔 대부분 없어서, 상부의 "유심" 카테고리 항목 중 이름이 가장 비슷한 것을 찾아 매칭
+      const svcHitsU = svcId && bySvcId[svcId] ? bySvcId[svcId].filter(e => !e.matched && e.category === 'usim') : [];
+      if (svcHitsU.length) {
+        matched = sumOf(svcHitsU); matchNote = '서비스번호 매칭(유심)';
+        if (isTargetPartner) markMatched(svcHitsU);
+      } else {
+        const usimCandidates = supEntries.filter(e => !e.matched && e.category === 'usim');
+        const best = findMostSimilar(usimCandidates, baseName);
+        if (best) {
+          matched = best.amount; matchNote = `이름유사매칭(유심, "${best.rawName}")`;
+          if (isTargetPartner) markMatched([best]);
+        }
+      }
+    } else if (!skipRow) {
+      const svcHits = svcId && bySvcId[svcId] ? bySvcId[svcId].filter(e => !e.matched && e.category === 'main') : [];
+      if (svcHits.length) {
+        matched = sumOf(svcHits);
+        matchNote = '서비스번호 매칭';
+        if (isTargetPartner) markMatched(svcHits);
+      } else {
+        const exactKey = baseName + '|' + dateKey;
+        const dateHits = dateKey && byNameDate[exactKey] ? byNameDate[exactKey].filter(e => !e.matched && e.category === 'main') : [];
+        if (dateHits.length) {
+          matched = sumOf(dateHits);
+          matchNote = '이름+접수일 매칭';
+          if (isTargetPartner) markMatched(dateHits);
+        } else {
+          const nameHits = byNameOnly[baseName] ? byNameOnly[baseName].filter(e => !e.matched && e.category === 'main') : [];
+          if (nameHits.length) {
+            const distinctDates = new Set(nameHits.map(e => e.dateKey || ''));
+            matched = sumOf(nameHits);
+            matchNote = distinctDates.size === 1 ? '이름만 매칭(날짜 불일치 또는 미지정)' : '⚠️동명이인 가능성(이름 매칭 다건, 합산값 사용)';
+            if (isTargetPartner) markMatched(nameHits);
+          } else {
+            // 마스킹된 이름(예: "김*민") 매칭 폴백 — 서비스번호/일반이름 매칭이 안 됐을 때만 시도
+            const maskedHits = supEntries.filter(e => !e.matched && e.category === 'main' && e.hasMask && maskedNameMatches(e.rawName, baseName));
+            if (maskedHits.length) {
+              matched = sumOf(maskedHits);
+              matchNote = maskedHits.length > 1 ? '⚠️마스킹이름 매칭(다건, 합산값 사용)' : '마스킹이름 매칭';
+              if (isTargetPartner) markMatched(maskedHits);
+            }
+          }
+        }
+      }
+    }
+
+    // 상부점 필터 대상이 아니면: 결과 테이블에는 넣지 않되, 혹시 매칭이 됐다면(=필터에 안 걸린 다른 상부 고객인데 이번 정산서와 매칭) 별도 알람으로만 기록
+    if (!isTargetPartner) {
+      if (matched !== null) {
+        crossPartnerRows.push({ 고객명: custName, 상품명: product, 상부점: partnerVal, 접수일: receiptDate, matchNote, matched: Math.round(matched) });
+      }
+      return;
+    }
+
+    let finalN, note, matchStatus;
+    if (existingN !== 0) {
+      finalN = existingN;
+      note = `기존 상부수수료 유지${matched !== null ? ` (매칭참고값: ${Math.round(matched).toLocaleString()}원)` : ''}`;
+      matchStatus = 'kept';
+    } else if (skipRow) {
+      finalN = 0; note = 'TV/전화행(합산은 인터넷행)'; matchStatus = 'ok';
+    } else if (matched !== null) {
+      finalN = Math.round(matched);
+      note = matchNote;
+      matchStatus = matchNote.startsWith('⚠️') ? 'warn' : 'ok';
+    } else {
+      finalN = 0;
+      note = '상부 정산서에서 매칭 실패';
+      matchStatus = 'unmatched';
+    }
+
+    const mainEq = finalN > 0 && isEqualEnough(oValue, finalN, product);
+    const anomaly = !skipRow && finalN > 0 && !mainEq && oValue > finalN;
+    const equalMatch = !skipRow && mainEq;
+
+    supComputedRows.push({
+      origIdx: idx + 2,
+      고객명: custName, 상품명: product, 접수일: receiptDate,
+      하부: oValue, 상부: finalN, matchStatus, anomaly, equalMatch, 비고: note
+    });
+  });
+
+  // 상부 정산서에는 있는데 우리 고객리스트 어디에도 매칭 안 된 건
+  const supOnlyRows = supEntries.filter(e => !e.matched);
+
+  renderSupStats(supOnlyRows, crossPartnerRows);
+  renderSupTable();
+  renderSupOnlyList(supOnlyRows);
+  renderCrossPartnerList(crossPartnerRows);
+  supResultArea.style.display = 'block';
+  supResultArea.scrollIntoView({ behavior: 'smooth' });
+});
+
+function renderSupStats(supOnlyRows, crossPartnerRows) {
+  const total = supComputedRows.length;
+  const unmatched = supComputedRows.filter(r => r.matchStatus === 'unmatched').length;
+  const anomaly = supComputedRows.filter(r => r.anomaly).length;
+  supStatsRow.innerHTML = `
+    <div class="stat"><div class="n">${total.toLocaleString()}</div><div class="l">전체</div></div>
+    <div class="stat warn"><div class="n">${unmatched.toLocaleString()}</div><div class="l">매칭실패</div></div>
+    <div class="stat warn"><div class="n">${anomaly.toLocaleString()}</div><div class="l">이상(하부&gt;상부)</div></div>
+    <div class="stat warn"><div class="n">${supOnlyRows.length.toLocaleString()}</div><div class="l">상부에만 있음</div></div>
+    <div class="stat warn"><div class="n">${crossPartnerRows.length.toLocaleString()}</div><div class="l">상부점 다른데 매칭</div></div>
+  `;
+}
+
+function renderSupOnlyList(supOnlyRows) {
+  if (!supOnlyRows.length) { supOnlyArea.style.display = 'none'; return; }
+  supOnlyArea.style.display = 'block';
+  supOnlyBody.innerHTML = supOnlyRows.map(r => `<tr class="warn">
+    <td>${esc(r.rawName)}</td>
+    <td>${esc(r.svcId || (r.svcIds && r.svcIds.join('/')))}</td>
+    <td>${esc(fmtDate(r.dateRaw))}</td>
+    <td>${r.amount.toLocaleString()}원</td>
+    <td>${esc(r.sourceFile)}</td>
+  </tr>`).join('');
+}
+
+function renderCrossPartnerList(crossPartnerRows) {
+  if (!crossPartnerRows.length) { crossPartnerArea.style.display = 'none'; return; }
+  crossPartnerArea.style.display = 'block';
+  crossPartnerBody.innerHTML = crossPartnerRows.map(r => `<tr class="warn">
+    <td>${esc(r.고객명)}</td>
+    <td>${esc(r.상품명)}</td>
+    <td>${esc(r.상부점)}</td>
+    <td>${esc(fmtDate(r.접수일))}</td>
+    <td><span class="note">${esc(r.matchNote)}</span></td>
+    <td>${r.matched.toLocaleString()}원</td>
+  </tr>`).join('');
+}
+
+function renderSupTable() {
+  const mode = supFilterMode.value;
+  let rows = supComputedRows;
+  if (mode === 'unmatched') rows = rows.filter(r => r.matchStatus === 'unmatched');
+  if (mode === 'anomaly') rows = rows.filter(r => r.anomaly);
+
+  if (rows.length === 0) {
+    supResultBody.innerHTML = `<tr><td colspan="7" class="empty">표시할 항목이 없습니다.</td></tr>`;
+    return;
+  }
+  supResultBody.innerHTML = rows.map(r => {
+    const cls = r.matchStatus === 'extra' ? 'prefilled' : (r.anomaly ? 'warn' : (r.matchStatus === 'unmatched' ? 'prefilled' : (r.equalMatch ? 'equalrow' : '')));
+    const tag = r.matchStatus === 'extra' ? '<span class="tag prefilled">추가단말/전화</span>' : (r.anomaly ? '<span class="tag warn">이상</span>' : (r.matchStatus === 'unmatched' ? '<span class="tag prefilled">매칭실패</span>' : (r.equalMatch ? '<span class="tag equal">일치</span>' : '<span class="tag ok">정상</span>')));
+    return `<tr class="${cls}">
+      <td>${esc(r.고객명)}</td>
+      <td>${esc(r.상품명)}</td>
+      <td>${esc(fmtDate(r.접수일))}</td>
+      <td>${r.하부.toLocaleString()}원</td>
+      <td>${r.상부.toLocaleString()}원</td>
+      <td>${tag}</td>
+      <td><span class="note">${esc(r.비고)}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+supFilterMode.addEventListener('change', renderSupTable);
+
+supDownloadBtn.addEventListener('click', async () => {
+  const outAOA = resultAOA.map(r => r.slice());
+  const nColIdx = resultColIdx['상부수수료'];
+  supComputedRows.forEach(r => {
+    outAOA[r.origIdx][nColIdx] = r.상부;
+  });
+
+  // 이상(하부>상부) 행은 빨간 글씨, 하부=상부(일치) 행은 파란 글씨로 표시
+  // (일반 xlsx 저장으로는 글자색을 못 넣어서 ExcelJS 사용)
+  const anomalyOrigIdx = new Set(supComputedRows.filter(r => r.anomaly).map(r => r.origIdx));
+  const equalOrigIdx = new Set(supComputedRows.filter(r => r.equalMatch).map(r => r.origIdx));
+
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Sheet1');
+  outAOA.forEach(rowArr => ws.addRow(rowArr));
+  anomalyOrigIdx.forEach(origIdx => {
+    const excelRow = ws.getRow(origIdx + 1); // origIdx는 0-based(첫 행=헤더1행), ExcelJS 행은 1-based → +1
+    excelRow.eachCell({ includeEmpty: true }, cell => {
+      cell.font = Object.assign({}, cell.font, { color: { argb: 'FFFF0000' } });
+    });
+  });
+  equalOrigIdx.forEach(origIdx => {
+    const excelRow = ws.getRow(origIdx + 1);
+    excelRow.eachCell({ includeEmpty: true }, cell => {
+      cell.font = Object.assign({}, cell.font, { color: { argb: 'FF0000FF' } });
+    });
+  });
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `상부수수료입력_${today}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>IBK 대량이체 양식 생성기</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --ink:#101820;
+    --paper:#F5F3EE;
+    --card:#FFFFFF;
+    --line:#DDD6C6;
+    --navy:#12314D;
+    --navy-dim:#3C5975;
+    --gold:#B8863A;
+    --gold-dim:#E4C989;
+    --ok:#2F6B4F;
+    --ok-bg:#E7F1EA;
+    --warn:#8A4B12;
+    --warn-bg:#FBF0DE;
+    --err:#9B2C2C;
+    --err-bg:#FBEAEA;
+    --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+    padding-bottom:60px;
+  }
+  .wrap{max-width:640px;margin:0 auto;padding:0 18px;}
+
+  header.top{
+    background:var(--navy);
+    color:#EFE9DA;
+    padding:28px 18px 22px;
+    border-bottom:3px solid var(--gold);
+  }
+  header.top .eyebrow{
+    font-size:11px; letter-spacing:.18em; text-transform:uppercase;
+    color:var(--gold-dim); font-weight:600; margin-bottom:8px;
+  }
+  header.top h1{
+    margin:0; font-size:22px; line-height:1.35; font-weight:700; letter-spacing:-.01em;
+  }
+  header.top p{margin:8px 0 0; font-size:13.5px; color:#C9D2DB; line-height:1.5;}
+
+  main{padding-top:20px;}
+
+  .card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:18px;
+    margin-bottom:16px;
+  }
+
+  .upload-box{
+    border:2px dashed #B9AF95;
+    border-radius:10px;
+    padding:26px 16px;
+    text-align:center;
+    background:#FBFAF6;
+    transition:border-color .15s, background .15s;
+  }
+  .upload-box.drag{border-color:var(--navy); background:#EFF3F6;}
+  .upload-box .icon{font-size:30px; margin-bottom:6px;}
+  .upload-box .title{font-weight:700; font-size:15px; margin-bottom:4px;}
+  .upload-box .sub{font-size:12.5px; color:#6B6455;}
+  .upload-box input[type=file]{display:none;}
+  .pick-btn{
+    display:inline-block; margin-top:14px;
+    background:var(--navy); color:#fff; border:none;
+    padding:11px 22px; border-radius:8px; font-size:14px; font-weight:600;
+    cursor:pointer;
+  }
+  .pick-btn:active{background:var(--navy-dim);}
+
+  .filename-row{
+    display:flex; align-items:center; justify-content:space-between;
+    font-size:13px; color:#4B4636; margin-top:12px;
+    background:#F0EDE3; border-radius:7px; padding:8px 12px;
+  }
+  .filename-row button{
+    background:none;border:none;color:var(--err);font-size:12px;font-weight:600;cursor:pointer;
+  }
+
+  .status{font-size:13px; color:#6B6455; margin-top:10px;}
+
+  .section-title{
+    font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--navy-dim); font-weight:700; margin:26px 0 10px;
+  }
+
+  .summary-grid{display:flex; gap:10px; margin-bottom:14px;}
+  .summary-grid .stat{
+    flex:1; background:#F0EDE3; border-radius:8px; padding:10px 12px;
+  }
+  .summary-grid .stat .n{font-size:19px; font-weight:800; color:var(--navy); font-family:var(--mono);}
+  .summary-grid .stat .l{font-size:11px; color:#6B6455; margin-top:2px;}
+
+  .file-card{
+    border:1px solid var(--line); border-radius:10px; overflow:hidden; margin-bottom:16px; background:#fff;
+  }
+  .file-card .fh{
+    background:var(--navy); color:#EFE9DA; padding:12px 16px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .file-card .fh .tag{font-size:11px; letter-spacing:.1em; color:var(--gold-dim); font-weight:700; text-transform:uppercase;}
+  .file-card .fh .fname{font-size:14px; font-weight:700; margin-top:2px;}
+  .file-card .fbody{padding:14px 16px;}
+
+  .amount-line{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px;}
+  .amount-line .big{font-size:22px; font-weight:800; font-family:var(--mono); color:var(--ink);}
+  .amount-line .cnt{font-size:12.5px; color:#6B6455;}
+
+  table.prev{width:100%; border-collapse:collapse; font-size:12px; margin-bottom:6px;}
+  table.prev th{
+    text-align:left; font-weight:700; color:#6B6455; font-size:10.5px;
+    text-transform:uppercase; letter-spacing:.04em;
+    border-bottom:1px solid var(--line); padding:5px 6px;
+  }
+  table.prev td{
+    padding:6px 6px; border-bottom:1px solid #F0EDE3; font-family:var(--mono); font-size:12px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:90px;
+  }
+  .more-row{font-size:11.5px; color:#9A9282; padding:4px 6px;}
+
+  .verify-line{
+    font-size:11.5px; border-radius:6px; padding:7px 10px; margin-top:8px; line-height:1.5;
+  }
+  .verify-line.ok{background:var(--ok-bg); color:var(--ok);}
+  .verify-line.bad{background:var(--err-bg); color:var(--err); font-weight:700;}
+
+  .btn-row{display:flex; gap:8px; margin-top:12px;}
+  .btn{
+    flex:1; padding:12px; border-radius:8px; font-size:13.5px; font-weight:700;
+    border:none; cursor:pointer; text-align:center;
+  }
+  .btn.primary{background:var(--gold); color:#2A1B04;}
+  .btn.primary:active{background:#a3762f;}
+  .btn.ghost{background:#fff; color:var(--navy); border:1.5px solid var(--navy);}
+  .btn.ghost:active{background:#EFF3F6;}
+
+  .banner{
+    border-radius:8px; padding:12px 14px; font-size:12.5px; margin-bottom:14px; line-height:1.55;
+  }
+  .banner.warn{background:var(--warn-bg); color:var(--warn); border:1px solid #E9CFA0;}
+  .banner.err{background:var(--err-bg); color:var(--err); border:1px solid #E9BABA;}
+  .banner.ok{background:var(--ok-bg); color:var(--ok); border:1px solid #B9DEC7;}
+  .banner b{display:block; margin-bottom:3px; font-size:12.5px;}
+  .banner ul{margin:4px 0 0; padding-left:18px;}
+
+  .rules-box{
+    font-size:12px; color:#6B6455; line-height:1.7; background:#F0EDE3; border-radius:8px; padding:12px 14px;
+  }
+  .rules-box b{color:var(--ink);}
+
+  footer{
+    text-align:center; font-size:11px; color:#A79F8C; padding:26px 18px 0;
+  }
+
+  @media (max-width:380px){
+    header.top h1{font-size:19px;}
+    .summary-grid{flex-wrap:wrap;}
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="eyebrow">IBK 기업은행 대량이체</div>
+    <h1>사은품 이체 양식 생성기</h1>
+    <p>CRM 엑셀을 올리면 &lsquo;금액&rsquo; 이체 양식과 &lsquo;추가사은품&rsquo; 이체 양식, 2개 파일을 자동으로 만들어드려요.</p>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div id="contextBanner"></div>
+
+  <div class="card" id="uploadCard">
+    <div class="upload-box" id="dropZone">
+      <div class="icon">📄</div>
+      <div class="title">CRM 엑셀 파일을 올려주세요</div>
+      <div class="sub">.xls / .xlsx 파일 (CRM에서 다운로드한 그대로)</div>
+      <label class="pick-btn" for="fileInput">파일 선택</label>
+      <input type="file" id="fileInput" accept=".xls,.xlsx,.csv">
+    </div>
+    <div id="fileMeta"></div>
+    <div class="status" id="statusLine"></div>
+  </div>
+
+  <div id="messages"></div>
+
+  <div id="results" style="display:none;">
+    <div class="summary-grid" id="summaryGrid"></div>
+
+    <div class="section-title">파일 1 &middot; 금액 기준 이체</div>
+    <div class="file-card" id="file1Card"></div>
+
+    <div class="section-title">파일 2 &middot; 추가사은품 기준 이체</div>
+    <div class="file-card" id="file2Card"></div>
+
+    <div class="section-title">지급완료 현황</div>
+    <div class="file-card" id="paidReportCard"></div>
+
+    <div class="section-title">개통일별 현황 (지급완료 기준)</div>
+    <div class="file-card" id="activationReportCard"></div>
+
+    <div class="section-title">적용 규칙</div>
+    <div class="rules-box">
+      <b>입금은행 · 입금계좌번호</b> ← CRM &lsquo;사은품은행(AC)&rsquo; · &lsquo;사은품계좌(AD)&rsquo;<br>
+      <b>이체금액</b> ← 파일1(사은품)은 &lsquo;금액&rsquo;, 파일2(추가사은품)은 &lsquo;추가사은품&rsquo; (각 0원 제외)<br>
+      <b>내통장인쇄내용</b> ← &lsquo;고객명&rsquo;에서 &lsquo;/&rsquo; 앞부분(이름)만 사용<br>
+      <b>받는분통장인쇄내용</b> ← &ldquo;인터넷 지원금&rdquo; 고정<br>
+      <b>CMS코드</b> ← 공란<br>
+      <b>지급완료(W열)에 날짜가 있는 행</b> ← 중복입금 방지를 위해 이체 대상에서 자동 제외<br>
+      <b>상품명(C열)에 &lsquo;TV&rsquo;·&lsquo;전화&rsquo;가 포함된 행</b> ← 금액이 있어도 이체 대상에서 자동 제외 (검증용)<br>
+      <b>사은품은행(AC)·사은품계좌(AD) 누락 행</b> ← 이체 불가로 자동 제외 (목록으로 별도 표시)<br>
+      <b>1건 이체금액이 50만원 초과인 행</b> ← 제외하지 않고 그대로 포함, 대신 확인 알림 표시<br>
+      <b>개통일(L열)-지급예정일 차이가 7일 이상인 행</b> ← 제외하지 않고 그대로 포함, 대신 확인 알림 표시<br>
+      <b>파일명</b> ← &ldquo;YYMMDD 사은품.xlsx&rdquo; / &ldquo;YYMMDD 추가사은품.xlsx&rdquo;<br>
+      <b>개통일별 현황</b> ← 지급완료 건 중 계좌정보 있는 건만, 고객 단위로 합산해 개통일별 리스트·합계 생성 (개통일 변경 여부 확인용)
+    </div>
+  </div>
+
+</main>
+
+<footer>업로드한 파일은 서버로 전송되지 않고 이 화면 안에서만 처리돼요.</footer>
+
+<script>
+const HEADER = ['입금은행','입금계좌번호','이체금액','내통장인쇄내용','받는분통장인쇄내용','CMS코드'];
+const RECEIVER_MSG = '인터넷 지원금';
+// 상품명(C열)에 이 키워드들 중 하나라도 포함되면, 금액이 있어도 이체 대상에서 자동 제외한다.
+const EXCLUDE_PRODUCT_KEYWORDS = ['TV', '전화'];
+function isExcludedProduct(productName){
+  if (!productName) return false;
+  const p = productName.toUpperCase();
+  return EXCLUDE_PRODUCT_KEYWORDS.some(kw => p.includes(kw.toUpperCase()));
+}
+
+const fileInput = document.getElementById('fileInput');
+const dropZone = document.getElementById('dropZone');
+const fileMeta = document.getElementById('fileMeta');
+const statusLine = document.getElementById('statusLine');
+const messages = document.getElementById('messages');
+const resultsEl = document.getElementById('results');
+const summaryGrid = document.getElementById('summaryGrid');
+const file1Card = document.getElementById('file1Card');
+const file2Card = document.getElementById('file2Card');
+const paidReportCard = document.getElementById('paidReportCard');
+const activationReportCard = document.getElementById('activationReportCard');
+
+let lastOutputs = null; // { file1: {aoa, count, total}, file2: {...} }
+
+// navigator.share 자체가 없으면 "공유하기"는 항상 다운로드로만 동작한다.
+// (일부 모바일 브라우저는 file:// 로 직접 연 페이지에서 공유 기능을 아예 막기도 한다.)
+if (typeof navigator.share !== 'function'){
+  document.getElementById('contextBanner').innerHTML = `
+    <div class="banner warn">
+      <b>이 브라우저에서는 "공유하기"가 다운로드로만 동작해요</b>
+      지금 환경(브라우저 또는 파일을 여는 방식)에서는 카카오톡 공유창을 바로
+      띄우는 기능을 쓸 수 없어요. 아래 버튼을 누르면 파일이 다운로드되니,
+      카카오톡 대화방에서 <b>+ → 파일</b>로 직접 첨부해서 보내주세요.
+      이 페이지를 인터넷 주소(https)로 호스팅하면 공유 버튼이 정상 동작할
+      가능성이 높아요 — 필요하시면 도와드릴게요.
+    </div>`;
+}
+
+fileInput.addEventListener('change', e => {
+  if (e.target.files && e.target.files[0]) handleFile(e.target.files[0]);
+});
+['dragover','dragenter'].forEach(evt=>{
+  dropZone.addEventListener(evt, e=>{e.preventDefault(); dropZone.classList.add('drag');});
+});
+['dragleave','drop'].forEach(evt=>{
+  dropZone.addEventListener(evt, e=>{e.preventDefault(); dropZone.classList.remove('drag');});
+});
+dropZone.addEventListener('drop', e=>{
+  if (e.dataTransfer.files && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+
+function clearMessages(){ messages.innerHTML = ''; }
+function showBanner(type, title, lines){
+  const div = document.createElement('div');
+  div.className = 'banner ' + type;
+  let html = '<b>' + title + '</b>';
+  if (lines && lines.length){
+    html += '<ul>' + lines.map(l=>'<li>'+escapeHtml(l)+'</li>').join('') + '</ul>';
+  }
+  div.innerHTML = html;
+  messages.appendChild(div);
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function handleFile(file){
+  clearMessages();
+  resultsEl.style.display = 'none';
+  fileMeta.innerHTML = `<div class="filename-row"><span>📎 ${escapeHtml(file.name)}</span>
+    <button id="clearBtn">지우기</button></div>`;
+  document.getElementById('clearBtn').addEventListener('click', ()=>{
+    fileInput.value=''; fileMeta.innerHTML=''; statusLine.textContent=''; clearMessages();
+    resultsEl.style.display='none';
+  });
+  statusLine.textContent = '파일을 읽는 중...';
+
+  try {
+    const buf = await file.arrayBuffer();
+    const rows = await parseToRows(buf, file.name);
+    statusLine.textContent = `표 인식 완료 · ${rows.length.toLocaleString()}행 (헤더 제외)`;
+    process(rows);
+  } catch(err){
+    console.error(err);
+    statusLine.textContent = '';
+    showBanner('err', '파일을 읽지 못했어요', [
+      err.message || String(err),
+      'CRM에서 받은 파일을 수정 없이 그대로 올려주세요.'
+    ]);
+  }
+}
+
+// ---- Parsing: detects real xlsx/zip (PK header) vs HTML-table export (EUC-KR) ----
+async function parseToRows(buf, filename){
+  const bytes = new Uint8Array(buf.slice(0,4));
+  const isZip = bytes[0]===0x50 && bytes[1]===0x4B; // "PK"
+
+  if (isZip || /\.xlsx$/i.test(filename)){
+    const wb = XLSX.read(buf, {type:'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const aoa = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
+    return aoaToObjects(aoa);
+  }
+
+  // Try EUC-KR decoded HTML table first (typical CRM .xls export), fall back to UTF-8.
+  // NOTE: don't use a raw regex test for "<table" here — Excel's frameset export embeds
+  // "<table ...>" as a JS *string literal* inside <script>, which false-positives a regex
+  // check. We must parse with DOMParser and look for a real <table> element instead.
+  function tryParse(decoded){
+    const doc = new DOMParser().parseFromString(decoded, 'text/html');
+    return {doc, table: doc.querySelector('table')};
+  }
+
+  let html;
+  try { html = new TextDecoder('euc-kr').decode(buf); } catch(e){ html = new TextDecoder('utf-8').decode(buf); }
+  let {table} = tryParse(html);
+
+  if (!table){
+    const htmlUtf8 = new TextDecoder('utf-8').decode(buf);
+    const attempt2 = tryParse(htmlUtf8);
+    if (attempt2.table){ html = htmlUtf8; table = attempt2.table; }
+  }
+
+  if (!table){
+    // Excel "웹페이지로 저장" 시 실제 데이터가 별도 폴더(*.files/sheet001.htm)로 빠지는 프레임셋 구조인지 확인
+    if (/Excel Workbook Frameset/i.test(html) || /\.files\/(sheet|filelist)/i.test(html)){
+      throw new Error('이 파일은 엑셀에서 "웹페이지"로 다시 저장되면서 프레임 구조로 바뀌었어요. 실제 데이터는 같이 생성된 별도 폴더(...files) 안에 있어서 이 파일 하나만으로는 읽을 수 없어요. CRM 원본 파일을 그대로 올리거나, 이름만 바꿔야 한다면 파일 탐색기에서 이름 바꾸기 기능을 사용해주세요.');
+    }
+    throw new Error('표(테이블)를 찾지 못했어요. CRM 엑셀 원본 파일이 맞는지 확인해주세요.');
+  }
+
+  const aoa = [];
+  table.querySelectorAll('tr').forEach(tr=>{
+    const cells = tr.querySelectorAll('th,td');
+    const row = Array.from(cells).map(td => td.textContent.replace(/\u00a0/g,' ').trim());
+    if (row.length) aoa.push(row);
+  });
+  return aoaToObjects(aoa);
+}
+
+function aoaToObjects(aoa){
+  if (!aoa || aoa.length < 2) throw new Error('데이터 행이 없어요.');
+  const header = aoa[0].map(h => String(h).trim());
+  const need = ['고객명','사은품은행','사은품계좌','금액','추가사은품'];
+  const idx = {};
+  need.forEach(col=>{
+    let i = header.indexOf(col);
+    if (i === -1) i = header.findIndex(h => h.includes(col));
+    idx[col] = i;
+  });
+  const missing = need.filter(c => idx[c] === -1);
+  if (missing.length){
+    throw new Error('CRM 파일에서 다음 컬럼을 찾지 못했어요: ' + missing.join(', '));
+  }
+  // '지급완료'(중복입금 방지용), '상품명'(TV 상품 제외용), '개통일'·'지급예정'(날짜 차이 알림용):
+  // 없어도 앱은 동작해야 하므로 못 찾아도 에러 내지 않음
+  let paidIdx = header.indexOf('지급완료');
+  if (paidIdx === -1) paidIdx = header.findIndex(h => h.includes('지급완료'));
+  let productIdx = header.indexOf('상품명');
+  if (productIdx === -1) productIdx = header.findIndex(h => h.includes('상품명'));
+  let activationIdx = header.indexOf('개통일');
+  if (activationIdx === -1) activationIdx = header.findIndex(h => h.includes('개통일'));
+  let scheduledIdx = header.indexOf('지급예정');
+  if (scheduledIdx === -1) scheduledIdx = header.findIndex(h => h.includes('지급예정'));
+
+  const out = [];
+  for (let r=1; r<aoa.length; r++){
+    const row = aoa[r];
+    if (!row || row.every(c => c==='' || c==null)) continue;
+    out.push({
+      고객명: String(row[idx['고객명']] ?? '').trim(),
+      사은품은행: String(row[idx['사은품은행']] ?? '').trim(),
+      사은품계좌: String(row[idx['사은품계좌']] ?? '').trim(),
+      금액: toNumber(row[idx['금액']]),
+      추가사은품: toNumber(row[idx['추가사은품']]),
+      지급완료: paidIdx === -1 ? '' : String(row[paidIdx] ?? '').trim(),
+      상품명: productIdx === -1 ? '' : String(row[productIdx] ?? '').trim(),
+      개통일: activationIdx === -1 ? '' : String(row[activationIdx] ?? '').trim(),
+      지급예정: scheduledIdx === -1 ? '' : String(row[scheduledIdx] ?? '').trim(),
+    });
+  }
+  return out;
+}
+
+function toNumber(v){
+  if (v === null || v === undefined) return 0;
+  const s = String(v).replace(/[^0-9.-]/g,'');
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+
+// 표준 규칙: "고객명"을 쓸 때는 항상 이 함수를 거쳐서 이름만 추출한다.
+// CRM '고객명' 원본은 "홍길동/OSS", "홍길동/동판" 처럼 '/' 뒤에 접수유형이 붙어있다.
+// '/' 앞부분(순수 이름)만 사용하고, 예금주(사은품예금주) 컬럼은 절대 참조하지 않는다.
+function nameOnly(customerName){
+  return String(customerName || '').split('/')[0].trim();
+}
+
+const HIGH_AMOUNT_THRESHOLD = 500000; // 1건 이체금액이 이 값을 초과하면 제외하지 않고 알림만 띄운다.
+const DATE_GAP_ALERT_DAYS = 7; // 개통일-지급예정일 차이가 이 값(일) 이상이면 알림만 띄운다 (제외하지 않음).
+
+// "2026-08-04" 같은 문자열을 날짜로 파싱. 형식이 이상하면 null.
+function parseDateLoose(s){
+  if (!s) return null;
+  const d = new Date(String(s).trim().replace(/\./g, '-'));
+  return isNaN(d.getTime()) ? null : d;
+}
+function daysBetween(d1, d2){
+  return Math.round(Math.abs(d2 - d1) / 86400000);
+}
+
+function buildFile(rows, amountKey){
+  const missing = []; // 은행 또는 계좌 누락으로 실제 제외한 건 (고객명, 금액)
+  const tvExcluded = []; // 상품명에 'TV'가 포함되어 제외한 건 (고객명, 금액, 상품명)
+  const highAmount = []; // 50만원 초과 건 — 제외하지 않고 알림용으로만 기록
+  const aoa = [HEADER];
+  let total = 0;
+  let count = 0;
+  rows.forEach((row) => {
+    const amt = row[amountKey];
+    if (!(amt > 0)) return;
+    if (isExcludedProduct(row.상품명)){
+      // 상품명(C열)에 제외 키워드(TV/전화 등)가 포함된 건: 금액이 있어도 이체 대상에서 제외하고 목록에만 기록
+      tvExcluded.push({name: nameOnly(row.고객명) || '(이름없음)', amount: amt, product: row.상품명});
+      return;
+    }
+    if (!row.사은품은행 || !row.사은품계좌){
+      // AC(사은품은행)/AD(사은품계좌) 누락 → 이체 불가하므로 파일에서 제외하고 목록에만 기록
+      missing.push({name: nameOnly(row.고객명) || '(이름없음)', amount: amt});
+      return;
+    }
+    if (amt > HIGH_AMOUNT_THRESHOLD){
+      // 제외하지 않는다 — 그대로 이체 대상에 포함시키되, 확인용 알림 목록에 별도로 남긴다.
+      highAmount.push({name: nameOnly(row.고객명) || '(이름없음)', amount: amt});
+    }
+    count++; total += amt;
+    aoa.push([
+      row.사은품은행,
+      row.사은품계좌,
+      amt,
+      nameOnly(row.고객명),
+      RECEIVER_MSG,
+      ''
+    ]);
+  });
+  return {aoa, count, total, missing, tvExcluded, highAmount};
+}
+
+function todayYYMMDD(){
+  const d = new Date();
+  const yy = String(d.getFullYear()).slice(-2);
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return yy+mm+dd;
+}
+
+function process(allRows){
+  // 안전장치: '지급완료'에 날짜가 이미 들어있는 행은 중복입금 위험이 있어
+  // 이체 대상에서 자동 제외하고, 무엇이 제외됐는지 화면에 이중 확인용으로 표시한다.
+  const alreadyPaid = allRows.filter(r => r.지급완료 && r.지급완료.trim() !== '');
+  const rows = allRows.filter(r => !(r.지급완료 && r.지급완료.trim() !== ''));
+
+  const f1 = buildFile(rows, '금액');
+  const f2 = buildFile(rows, '추가사은품');
+
+  // 개통일(L열)과 지급예정일 차이가 DATE_GAP_ALERT_DAYS 이상인 건 — 제외하지 않고 알림만.
+  // 금액 또는 추가사은품이 있는(실제 이체가 발생하는) 행만 대상으로 한다.
+  const dateGapAlerts = [];
+  rows.forEach(r => {
+    if (!(r.금액 > 0 || r.추가사은품 > 0)) return;
+    const d1 = parseDateLoose(r.개통일);
+    const d2 = parseDateLoose(r.지급예정);
+    if (!d1 || !d2) return;
+    const gap = daysBetween(d1, d2);
+    if (gap >= DATE_GAP_ALERT_DAYS){
+      dateGapAlerts.push({
+        name: nameOnly(r.고객명) || '(이름없음)',
+        activationDate: r.개통일,
+        scheduledDate: r.지급예정,
+        gap,
+        amount: r.금액 > 0 ? r.금액 : r.추가사은품,
+      });
+    }
+  });
+
+  // 지급완료 현황 리포트: alreadyPaid 전 건에 대해 사은품/추가사은품 합계·총건수를 정리
+  const PAID_HEADER = ['고객명','상품명','사은품(금액)','추가사은품','지급완료일'];
+  const paidReportAoa = [PAID_HEADER];
+  alreadyPaid.forEach(r => {
+    paidReportAoa.push([nameOnly(r.고객명), r.상품명, r.금액, r.추가사은품, r.지급완료]);
+  });
+  const paidReport = {
+    aoa: paidReportAoa,
+    count: alreadyPaid.length,
+    amtTotal: sumAllPaid(alreadyPaid, '금액'),
+    addTotal: sumAllPaid(alreadyPaid, '추가사은품'),
+  };
+  function sumAllPaid(list, key){ return list.reduce((s,r) => s + (r[key] || 0), 0); }
+
+  // 개통일별 현황: 지급완료 건 중에서도 계좌 불일치/누락(사은품은행·사은품계좌 없음)은 제외하고,
+  // "진짜 지급완료된" 건만 고객(이름) 단위로 합산해서 개통일별로 묶는다.
+  // → 다음 주 정산 시 개통일이 바뀐 고객이 있는지 대조하기 위한 리스트.
+  const validPaid = alreadyPaid.filter(r => r.사은품은행 && r.사은품계좌);
+  const custMap = new Map(); // key: 이름 -> {이름, 개통일, 사은품, 추가사은품}
+  validPaid.forEach(r => {
+    const name = nameOnly(r.고객명) || '(이름없음)';
+    const key = name + '|' + r.개통일; // 같은 이름이라도 개통일이 다르면 별개로 취급
+    if (!custMap.has(key)){
+      custMap.set(key, {이름: name, 개통일: r.개통일 || '(개통일없음)', 사은품: 0, 추가사은품: 0});
+    }
+    const c = custMap.get(key);
+    c.사은품 += r.금액;
+    c.추가사은품 += r.추가사은품;
+  });
+  const custList = Array.from(custMap.values()).sort((a,b)=>{
+    if (a.개통일 !== b.개통일) return a.개통일 < b.개통일 ? -1 : 1;
+    return a.이름 < b.이름 ? -1 : (a.이름 > b.이름 ? 1 : 0);
+  });
+
+  const ACT_HEADER = ['개통일','고객명','사은품(금액)','추가사은품'];
+  const activationDetailAoa = [ACT_HEADER];
+  custList.forEach(c => activationDetailAoa.push([c.개통일, c.이름, c.사은품, c.추가사은품]));
+
+  const dateStatsMap = new Map(); // 개통일 -> {count, amt, add}
+  custList.forEach(c => {
+    if (!dateStatsMap.has(c.개통일)) dateStatsMap.set(c.개통일, {count:0, amt:0, add:0});
+    const s = dateStatsMap.get(c.개통일);
+    s.count++; s.amt += c.사은품; s.add += c.추가사은품;
+  });
+  const dateStatsList = Array.from(dateStatsMap.entries())
+    .sort((a,b)=> a[0] < b[0] ? -1 : (a[0] > b[0] ? 1 : 0))
+    .map(([date, s]) => ({date, ...s}));
+
+  const ACT_SUMMARY_HEADER = ['개통일','고객수','사은품 합계','추가사은품 합계'];
+  const activationSummaryAoa = [ACT_SUMMARY_HEADER];
+  dateStatsList.forEach(s => activationSummaryAoa.push([s.date, s.count, s.amt, s.add]));
+  const grandCount = custList.length;
+  const grandAmt = custList.reduce((s,c)=>s+c.사은품,0);
+  const grandAdd = custList.reduce((s,c)=>s+c.추가사은품,0);
+  activationSummaryAoa.push(['합계', grandCount, grandAmt, grandAdd]);
+
+  const activationReport = {
+    detailAoa: activationDetailAoa,
+    summaryAoa: activationSummaryAoa,
+    dateStatsList,
+    grandCount, grandAmt, grandAdd,
+    skippedCount: alreadyPaid.length - validPaid.length, // 계좌 불일치/누락으로 이 리포트에서 제외된 건수
+  };
+
+  lastOutputs = {file1: f1, file2: f2, paidReport, activationReport};
+
+  clearMessages();
+
+  // 검산: CRM 원본 전체 합계 - (지급완료 제외분) - (TV상품 제외분) - (계좌정보 누락 제외분) = 최종 파일 합계 가 되는지
+  // 독립적으로 다시 계산해서 대조한다. (별도 배너로 표시되는 안전장치)
+  function sumAll(list, key){ return list.reduce((s,r) => s + (r[key] || 0), 0); }
+  const crmTotalAmt = sumAll(allRows, '금액');
+  const crmTotalAdd = sumAll(allRows, '추가사은품');
+  const paidExcludedAmt = sumAll(alreadyPaid, '금액');
+  const paidExcludedAdd = sumAll(alreadyPaid, '추가사은품');
+  const tvExcludedAmt = f1.tvExcluded.reduce((s,m)=>s+m.amount, 0);
+  const tvExcludedAdd = f2.tvExcluded.reduce((s,m)=>s+m.amount, 0);
+  const missingExcludedAmt = f1.missing.reduce((s,m)=>s+m.amount, 0);
+  const missingExcludedAdd = f2.missing.reduce((s,m)=>s+m.amount, 0);
+  const expectedF1 = crmTotalAmt - paidExcludedAmt - tvExcludedAmt - missingExcludedAmt;
+  const expectedF2 = crmTotalAdd - paidExcludedAdd - tvExcludedAdd - missingExcludedAdd;
+  const reconcileOk = (expectedF1 === f1.total) && (expectedF2 === f2.total);
+
+  // 1) 처리 결과 요약 (항상 표시)
+  const summaryLines = [
+    `사은품(파일1): ${f1.count.toLocaleString()}건 · 합계 ${f1.total.toLocaleString()}원`,
+    `추가사은품(파일2): ${f2.count.toLocaleString()}건 · 합계 ${f2.total.toLocaleString()}원`,
+    `지급완료로 제외된 건: ${alreadyPaid.length.toLocaleString()}건`,
+    reconcileOk
+      ? `검산: CRM 원본 금액 합계(${crmTotalAmt.toLocaleString()}원) − 제외분 = 파일 합계와 정확히 일치 ✓`
+      : `⚠ 검산 불일치! CRM 원본 기준 예상 합계(사은품 ${expectedF1.toLocaleString()}원 · 추가사은품 ${expectedF2.toLocaleString()}원)와 실제 생성 파일 합계가 달라요 — 다운로드 전 반드시 확인하세요`,
+  ];
+  showBanner(reconcileOk ? 'ok' : 'err', '가공 완료 — 결과 요약', summaryLines);
+
+  // 1.5) 1건당 50만원 초과 이체 알림 (제외하지 않고 그대로 포함 — 확인용 알림만)
+  const highAmountAll = [
+    ...f1.highAmount.map(m => ({...m, file:'사은품'})),
+    ...f2.highAmount.map(m => ({...m, file:'추가사은품'})),
+  ];
+  if (highAmountAll.length){
+    const lines = highAmountAll.map(m => `[${m.file}] ${m.name} — ${m.amount.toLocaleString()}원`);
+    showBanner('warn', `⚠ 1건당 ${HIGH_AMOUNT_THRESHOLD.toLocaleString()}원을 초과하는 이체가 있어요 (${highAmountAll.length}건) — 제외하지 않고 파일에 포함했으니 금액을 꼭 확인해주세요`, lines);
+  }
+
+  // 1.6) 개통일-지급예정일 차이가 7일 이상인 건 알림 (제외하지 않고 그대로 포함 — 확인용 알림만)
+  if (dateGapAlerts.length){
+    const lines = dateGapAlerts.map(m => `${m.name} — 개통일: ${m.activationDate} / 지급예정: ${m.scheduledDate} (${m.gap}일 차이) · ${m.amount.toLocaleString()}원`);
+    showBanner('warn', `⚠ 개통일과 지급예정일이 ${DATE_GAP_ALERT_DAYS}일 이상 차이나는 건이 있어요 (${dateGapAlerts.length}건) — 제외하지 않고 파일에 포함했으니 확인해주세요`, lines);
+  }
+
+  // 2) 지급완료 제외 목록 (있을 때만)
+  if (alreadyPaid.length){
+    const lines = alreadyPaid.map(r => `${nameOnly(r.고객명)} — 지급완료: ${r.지급완료}`);
+    showBanner('err', `지급완료 날짜가 있어 이체 대상에서 제외한 건 (${alreadyPaid.length}건) — 중복입금 방지, 꼭 확인해주세요`, lines);
+  }
+
+  // 3) 상품명에 제외 키워드(TV/전화)가 포함되어 제외한 건 목록 (있을 때만) — C:상품명
+  const tvAll = [
+    ...f1.tvExcluded.map(m => ({...m, file:'사은품'})),
+    ...f2.tvExcluded.map(m => ({...m, file:'추가사은품'})),
+  ];
+  if (tvAll.length){
+    const lines = tvAll.map(m => `[${m.file}] ${m.name} — ${m.amount.toLocaleString()}원 (상품명: ${m.product})`);
+    showBanner('warn', `상품명에 ${EXCLUDE_PRODUCT_KEYWORDS.map(k=>"'"+k+"'").join('/')}가 포함되어 이체 대상에서 제외한 건 (${tvAll.length}건)`, lines);
+  }
+
+  // 4) 은행/계좌 누락으로 제외한 건 목록 (있을 때만) — AC:사은품은행, AD:사은품계좌
+  const missingAll = [
+    ...f1.missing.map(m => ({...m, file:'사은품'})),
+    ...f2.missing.map(m => ({...m, file:'추가사은품'})),
+  ];
+  if (missingAll.length){
+    const lines = missingAll.map(m => `[${m.file}] ${m.name} — ${m.amount.toLocaleString()}원`);
+    showBanner('warn', `입금은행 또는 계좌번호가 없어 이체 대상에서 제외한 건 (${missingAll.length}건)`, lines);
+  }
+
+  summaryGrid.innerHTML = `
+    <div class="stat"><div class="n">${(f1.count+f2.count).toLocaleString()}</div><div class="l">총 이체 건수</div></div>
+    <div class="stat"><div class="n">${(f1.total+f2.total).toLocaleString()}</div><div class="l">총 이체금액(원)</div></div>
+    <div class="stat"><div class="n">${alreadyPaid.length.toLocaleString()}</div><div class="l">지급완료 제외</div></div>
+  `;
+
+  const dateTag = todayYYMMDD();
+  renderFileCard(file1Card, '파일 1 · 사은품', `${dateTag} 사은품.xlsx`, f1);
+  renderFileCard(file2Card, '파일 2 · 추가사은품', `${dateTag} 추가사은품.xlsx`, f2);
+  renderPaidReportCard(paidReportCard, `${dateTag} 지급완료현황.xlsx`, paidReport);
+  renderActivationReportCard(activationReportCard, `${dateTag} 개통일별_사은품집계.xlsx`, activationReport);
+
+  resultsEl.style.display = 'block';
+}
+
+// 자체 검증: buildFile이 계산한 count/total이 실제로 aoa에 쓰인 값과 정확히 같은지
+// 독립적으로 다시 세어서 대조한다. (코드가 나중에 바뀌더라도 계속 지켜주는 안전장치)
+function verifyFile(data){
+  const dataRows = data.aoa.slice(1);
+  let recomputedTotal = 0;
+  dataRows.forEach(r => { recomputedTotal += Number(r[2]) || 0; });
+  const recomputedCount = dataRows.length;
+  const ok = (recomputedCount === data.count) && (recomputedTotal === data.total);
+  return {ok, recomputedCount, recomputedTotal};
+}
+
+function renderFileCard(container, tag, filename, data){
+  const previewRows = data.aoa.slice(1, 6);
+  let tableHtml = '<table class="prev"><thead><tr>' +
+    HEADER.map(h=>`<th>${h}</th>`).join('') + '</tr></thead><tbody>';
+  previewRows.forEach(r=>{
+    tableHtml += '<tr>' + r.map((c,i)=>`<td>${escapeHtml(i===2? Number(c).toLocaleString() : c)}</td>`).join('') + '</tr>';
+  });
+  tableHtml += '</tbody></table>';
+  const moreCount = data.aoa.length - 1 - previewRows.length;
+
+  const v = verifyFile(data);
+  const verifyHtml = v.ok
+    ? `<div class="verify-line ok">✓ 검증 완료 · 파일 안 실제 값 ${v.recomputedCount.toLocaleString()}건 · ${v.recomputedTotal.toLocaleString()}원 일치</div>`
+    : `<div class="verify-line bad">⚠ 검증 불일치! 표시값 ${data.count.toLocaleString()}건/${data.total.toLocaleString()}원 ↔ 파일 실제 ${v.recomputedCount.toLocaleString()}건/${v.recomputedTotal.toLocaleString()}원 — 다운로드 전 반드시 확인하세요</div>`;
+
+  container.innerHTML = `
+    <div class="fh">
+      <div>
+        <div class="tag">${tag}</div>
+        <div class="fname">${filename}</div>
+      </div>
+    </div>
+    <div class="fbody">
+      <div class="amount-line">
+        <div class="big">${data.total.toLocaleString()}원</div>
+        <div class="cnt">${data.count.toLocaleString()}건</div>
+      </div>
+      ${data.count === 0 ? '<div class="status">해당 조건의 이체 대상이 없어요.</div>' : tableHtml}
+      ${moreCount > 0 ? `<div class="more-row">외 ${moreCount.toLocaleString()}건 더 (다운로드 파일에는 전체 포함)</div>` : ''}
+      ${data.count > 0 ? verifyHtml : ''}
+      <div class="btn-row">
+        <button class="btn primary" data-action="download" data-key="${tag.includes('1')?'file1':'file2'}" data-name="${filename}">⬇ 다운로드</button>
+        <button class="btn ghost" data-action="share" data-key="${tag.includes('1')?'file1':'file2'}" data-name="${filename}">공유하기</button>
+      </div>
+    </div>
+  `;
+
+  container.querySelectorAll('button[data-action]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const key = btn.getAttribute('data-key');
+      const name = btn.getAttribute('data-name');
+      const action = btn.getAttribute('data-action');
+      const blob = aoaToXlsxBlob(lastOutputs[key].aoa);
+      if (action === 'download'){
+        downloadBlob(blob, name);
+      } else {
+        shareBlob(blob, name, btn);
+      }
+    });
+  });
+}
+
+function buildXlsxBlob(aoa, opts){
+  const {sheetName, textCols = [], numberCols = [], colWidths} = opts;
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let R = 1; R <= range.e.r; R++){
+    textCols.forEach(col=>{
+      const ref = col + (R+1);
+      if (ws[ref]) { ws[ref].t = 's'; ws[ref].z = '@'; }
+    });
+    numberCols.forEach(col=>{
+      const ref = col + (R+1);
+      if (ws[ref]) { ws[ref].t = 'n'; ws[ref].z = '#,##0'; }
+    });
+  }
+  if (colWidths) ws['!cols'] = colWidths;
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  const out = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+  return new Blob([out], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+
+function renderPaidReportCard(container, filename, data){
+  const previewRows = data.aoa.slice(1, 6);
+  let tableHtml = '<table class="prev"><thead><tr>' +
+    data.aoa[0].map(h=>`<th>${h}</th>`).join('') + '</tr></thead><tbody>';
+  previewRows.forEach(r=>{
+    tableHtml += '<tr>' + r.map((c,i)=>`<td>${escapeHtml((i===2||i===3) ? Number(c).toLocaleString() : c)}</td>`).join('') + '</tr>';
+  });
+  tableHtml += '</tbody></table>';
+  const moreCount = data.aoa.length - 1 - previewRows.length;
+
+  container.innerHTML = `
+    <div class="fh">
+      <div>
+        <div class="tag">PAID REPORT · 지급완료</div>
+        <div class="fname">${filename}</div>
+      </div>
+    </div>
+    <div class="fbody">
+      <div class="summary-grid" style="margin-bottom:12px;">
+        <div class="stat"><div class="n">${data.count.toLocaleString()}</div><div class="l">총건수</div></div>
+        <div class="stat"><div class="n">${data.amtTotal.toLocaleString()}</div><div class="l">사은품 합계(원)</div></div>
+        <div class="stat"><div class="n">${data.addTotal.toLocaleString()}</div><div class="l">추가사은품 합계(원)</div></div>
+      </div>
+      ${data.count === 0 ? '<div class="status">지급완료로 표시된 건이 없어요.</div>' : tableHtml}
+      ${moreCount > 0 ? `<div class="more-row">외 ${moreCount.toLocaleString()}건 더 (다운로드 파일에는 전체 포함)</div>` : ''}
+      <div class="btn-row">
+        <button class="btn primary" data-action="download" data-key="paidReport" data-name="${filename}">⬇ 다운로드</button>
+        <button class="btn ghost" data-action="share" data-key="paidReport" data-name="${filename}">공유하기</button>
+      </div>
+    </div>
+  `;
+
+  container.querySelectorAll('button[data-action]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const name = btn.getAttribute('data-name');
+      const action = btn.getAttribute('data-action');
+      const blob = buildXlsxBlob(lastOutputs.paidReport.aoa, {
+        sheetName: '지급완료현황',
+        textCols: ['A','B','E'],
+        numberCols: ['C','D'],
+        colWidths: [{wch:14},{wch:20},{wch:12},{wch:12},{wch:12}],
+      });
+      if (action === 'download'){ downloadBlob(blob, name); } else { shareBlob(blob, name, btn); }
+    });
+  });
+}
+
+// 여러 시트를 담은 xlsx Blob 생성 (개통일별 현황: 고객리스트 + 합계 2개 시트)
+function buildMultiSheetXlsxBlob(sheets){
+  const wb = XLSX.utils.book_new();
+  sheets.forEach(sh => {
+    const ws = XLSX.utils.aoa_to_sheet(sh.aoa);
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let R = 1; R <= range.e.r; R++){
+      (sh.textCols || []).forEach(col=>{
+        const ref = col + (R+1);
+        if (ws[ref]) { ws[ref].t = 's'; ws[ref].z = '@'; }
+      });
+      (sh.numberCols || []).forEach(col=>{
+        const ref = col + (R+1);
+        if (ws[ref]) { ws[ref].t = 'n'; ws[ref].z = '#,##0'; }
+      });
+    }
+    if (sh.colWidths) ws['!cols'] = sh.colWidths;
+    XLSX.utils.book_append_sheet(wb, ws, sh.name);
+  });
+  const out = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+  return new Blob([out], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+
+function buildActivationReportBlob(activationReport){
+  return buildMultiSheetXlsxBlob([
+    {
+      name: '개통일별 고객리스트',
+      aoa: activationReport.detailAoa,
+      textCols: ['A','B'],
+      numberCols: ['C','D'],
+      colWidths: [{wch:14},{wch:18},{wch:14},{wch:14}],
+    },
+    {
+      name: '개통일별 합계',
+      aoa: activationReport.summaryAoa,
+      textCols: ['A'],
+      numberCols: ['B','C','D'],
+      colWidths: [{wch:14},{wch:10},{wch:16},{wch:16}],
+    },
+  ]);
+}
+
+function renderActivationReportCard(container, filename, data){
+  const previewRows = data.detailAoa.slice(1, 8);
+  let tableHtml = '<table class="prev"><thead><tr>' +
+    data.detailAoa[0].map(h=>`<th>${h}</th>`).join('') + '</tr></thead><tbody>';
+  previewRows.forEach(r=>{
+    tableHtml += '<tr>' + r.map((c,i)=>`<td>${escapeHtml((i===2||i===3) ? Number(c).toLocaleString() : c)}</td>`).join('') + '</tr>';
+  });
+  tableHtml += '</tbody></table>';
+  const moreCount = data.detailAoa.length - 1 - previewRows.length;
+
+  let dateStatsHtml = '<table class="prev"><thead><tr><th>개통일</th><th>고객수</th><th>사은품</th><th>추가사은품</th></tr></thead><tbody>';
+  data.dateStatsList.forEach(s=>{
+    dateStatsHtml += `<tr><td>${escapeHtml(s.date)}</td><td>${s.count.toLocaleString()}</td><td>${s.amt.toLocaleString()}</td><td>${s.add.toLocaleString()}</td></tr>`;
+  });
+  dateStatsHtml += '</tbody></table>';
+
+  container.innerHTML = `
+    <div class="fh">
+      <div>
+        <div class="tag">ACTIVATION REPORT · 개통일별</div>
+        <div class="fname">${filename}</div>
+      </div>
+    </div>
+    <div class="fbody">
+      <div class="summary-grid" style="margin-bottom:12px;">
+        <div class="stat"><div class="n">${data.grandCount.toLocaleString()}</div><div class="l">총 고객수</div></div>
+        <div class="stat"><div class="n">${data.grandAmt.toLocaleString()}</div><div class="l">사은품 합계(원)</div></div>
+        <div class="stat"><div class="n">${data.grandAdd.toLocaleString()}</div><div class="l">추가사은품 합계(원)</div></div>
+      </div>
+      ${data.skippedCount > 0 ? `<div class="verify-line bad" style="margin-bottom:10px;">계좌 불일치/누락으로 이 리포트에서 제외된 지급완료 건: ${data.skippedCount.toLocaleString()}건</div>` : ''}
+      <div style="font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#6B6455; font-weight:700; margin-bottom:6px;">개통일별 합계</div>
+      ${dateStatsHtml}
+      <div style="font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#6B6455; font-weight:700; margin:14px 0 6px;">고객 리스트 (미리보기)</div>
+      ${data.grandCount === 0 ? '<div class="status">해당 건이 없어요.</div>' : tableHtml}
+      ${moreCount > 0 ? `<div class="more-row">외 ${moreCount.toLocaleString()}건 더 (다운로드 파일에는 전체 포함)</div>` : ''}
+      <div class="btn-row">
+        <button class="btn primary" data-action="download" data-key="activationReport" data-name="${filename}">⬇ 다운로드</button>
+        <button class="btn ghost" data-action="share" data-key="activationReport" data-name="${filename}">공유하기</button>
+      </div>
+    </div>
+  `;
+
+  container.querySelectorAll('button[data-action]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const name = btn.getAttribute('data-name');
+      const action = btn.getAttribute('data-action');
+      const blob = buildActivationReportBlob(lastOutputs.activationReport);
+      if (action === 'download'){ downloadBlob(blob, name); } else { shareBlob(blob, name, btn); }
+    });
+  });
+}
+
+
+function aoaToXlsxBlob(aoa){
+  // 입금은행/입금계좌번호/내통장인쇄내용/받는분통장인쇄내용/CMS코드(A,B,D,E,F)는 텍스트, 이체금액(C)만 숫자
+  return buildXlsxBlob(aoa, {
+    sheetName: '이체양식',
+    textCols: ['A','B','D','E','F'],
+    numberCols: ['C'],
+    colWidths: [{wch:12},{wch:20},{wch:12},{wch:16},{wch:18},{wch:10}],
+  });
+}
+
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+}
+
+async function shareBlob(blob, filename, btn){
+  const old = btn.textContent;
+  function tellUser(msg, ms){
+    btn.textContent = msg;
+    setTimeout(()=>{btn.textContent = old;}, ms || 3200);
+  }
+
+  // navigator.share 자체가 없으면 공유는 애초에 불가능 — 바로 다운로드하고 이유를 알려준다.
+  if (typeof navigator.share !== 'function'){
+    downloadBlob(blob, filename);
+    tellUser('⚠️ 이 브라우저는 공유 미지원 · 다운로드는 됐어요', 4500);
+    return;
+  }
+
+  try {
+    const file = new File([blob], filename, {type: blob.type});
+    if (navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title: filename});
+    } else {
+      downloadBlob(blob, filename);
+      tellUser('이 브라우저는 공유 미지원 · 다운로드함');
+    }
+  } catch(err){
+    if (err && err.name !== 'AbortError'){
+      console.error(err);
+      downloadBlob(blob, filename);
+      tellUser('공유 실패 · 대신 다운로드했어요');
+    }
+  }
+}
+</script>
+</body>
+</html>
